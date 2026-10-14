@@ -1,0 +1,13 @@
+{"at":"2026-10-10T09:00:00Z","kind":"pr","key":["example/widget",1,"aaaaaaa"],"event":"seen","title":"Retry transient failures","policy":"aaaaaa"}
+{"at":"2026-10-10T09:01:00Z","kind":"pr","key":["example/widget",1,"aaaaaaa"],"event":"applied","action":"request_changes","reason":"retry has no limit","source":"ai","policy":"aaaaaa"}
+{"at":"2026-10-10T09:02:00Z","kind":"pr","key":["example/widget",1,"aaaaaaa"],"event":"notify","text":"check the retry limit","policy":"aaaaaa"}
+{"at":"2026-10-10T09:03:00Z","kind":"pr","key":["example/widget",1,"aaaaaaa"],"event":"applied","action":"request_changes","reason":"retry has no limit","source":"ai","policy":"bbbbbb"}
+{"at":"2026-10-10T09:04:00Z","kind":"pr","key":["example/widget",2,"bbbbbbb"],"event":"seen","title":"Update guide","policy":"aaaaaa"}
+{"at":"2026-10-10T09:05:00Z","kind":"pr","key":["example/widget",2,"bbbbbbb"],"event":"assessment","action":"approve","reason":"proposal only","policy":"aaaaaa"}
+{"at":"2026-10-10T09:06:00Z","kind":"pr","key":["example/widget",3,"ccccccc"],"event":"applied","action":"approve","reason":"already on GitHub","source":"observed","policy":"aaaaaa"}
+{"at":"2026-10-10T09:07:00Z","kind":"pr","key":["example/widget",4,"ddddddd"],"event":"would_comment","reason":"CI needs attention","mode":"dry-run","policy":"aaaaaa"}
+{"at":"2026-10-10T09:08:00Z","kind":"pr","key":["example/widget",5,"eeeeeee"],"event":"nothing","reason":"[bold red]x[/] \u001b[2J","policy":"aaaaaa"}
+{"at":"2026-10-10T09:09:00Z","kind":"pr","key":["example/widget",6,"fffffff"],"event":"closed","reason":"pull request is merged","policy":"aaaaaa"}
+{"at":"2026-10-10T09:10:00Z","kind":"pr","key":["example/widget",7,"aaaaaaa"],"event":"applied","action":"approve","reason":"safe change","body":"Please update the description.","source":"ai","policy":"aaaaaa"}
+{"at":"2026-10-10T09:11:00Z","kind":"deployment","key":["example/widget",100,1,10],"event":"seen","title":"release.yml","environment":"staging","policy":"aaaaaa"}
+{"at":"2026-10-10T09:12:00Z","kind":"deployment","key":["example/widget",100,1,10],"event":"defer","reason":"jobs still running: package","policy":"aaaaaa"}

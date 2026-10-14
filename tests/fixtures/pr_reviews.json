@@ -1,0 +1,16 @@
+[
+  {
+    "user": {
+      "login": "bob"
+    },
+    "state": "COMMENTED",
+    "body": "looks fine",
+    "commit_id": "abcdef0123456789abcdef0123456789abcdef01"
+  },
+  {
+    "user": null,
+    "state": "DISMISSED",
+    "body": null,
+    "commit_id": null
+  }
+]

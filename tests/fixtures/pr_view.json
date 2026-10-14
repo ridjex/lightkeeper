@@ -1,0 +1,21 @@
+{
+  "number": 42,
+  "state": "OPEN",
+  "isDraft": false,
+  "headRefOid": "abcdef0123456789abcdef0123456789abcdef01",
+  "baseRefName": "main",
+  "author": {"id": "U_1", "is_bot": false, "login": "alice", "name": ""},
+  "title": "docs: fix wiki index",
+  "body": "Fixes a broken link.",
+  "reviewRequests": [
+    {"__typename": "User", "login": "me"},
+    {"__typename": "Team", "name": "example/reviewers", "slug": "reviewers"},
+    {"__typename": "Team", "name": "Already Qualified", "slug": "org/already-qualified"}
+  ],
+  "statusCheckRollup": [
+    {"__typename": "CheckRun", "name": "pytest", "status": "COMPLETED", "conclusion": "SUCCESS",
+     "workflowName": "tests", "startedAt": "2026-10-10T09:00:00Z", "completedAt": "2026-10-10T09:01:00Z"},
+    {"__typename": "CheckRun", "name": "lint", "status": "IN_PROGRESS", "conclusion": null, "workflowName": "tests"},
+    {"__typename": "StatusContext", "context": "ci/legacy", "state": "SUCCESS", "targetUrl": null}
+  ]
+}

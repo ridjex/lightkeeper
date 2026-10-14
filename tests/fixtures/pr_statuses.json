@@ -1,0 +1,45 @@
+{
+  "data": {
+    "pr0": {
+      "pullRequest": {
+        "state": "OPEN",
+        "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "isDraft": false,
+        "updatedAt": "2026-10-10T09:00:00Z",
+        "author": {"login": "contributor"},
+        "title": "Update the sample widget",
+        "commits": {"nodes": [{"commit": {"statusCheckRollup": {
+          "state": "PENDING",
+          "contexts": {
+            "totalCount": 8,
+            "checkRunCountsByState": [
+              {"state": "SUCCESS", "count": 2},
+              {"state": "IN_PROGRESS", "count": 1},
+              {"state": "QUEUED", "count": 0},
+              {"state": "FAILURE", "count": 1},
+              {"state": "STALE", "count": 1},
+              {"state": "SKIPPED", "count": 1}
+            ],
+            "statusContextCountsByState": [
+              {"state": "SUCCESS", "count": 1},
+              {"state": "PENDING", "count": 1}
+            ]
+          }
+        }}}]}
+      }
+    },
+    "pr1": {"pullRequest": null},
+    "pr2": {
+      "pullRequest": {
+        "state": "OPEN",
+        "headRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "isDraft": true,
+        "updatedAt": "2026-10-10T09:01:00Z",
+        "author": null,
+        "title": "Start documentation",
+        "commits": {"nodes": [{"commit": {"statusCheckRollup": null}}]}
+      }
+    }
+  },
+  "errors": [{"type": "NOT_FOUND", "path": ["pr1", "pullRequest"], "message": "Could not resolve a PullRequest"}]
+}

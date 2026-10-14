@@ -1,0 +1,7 @@
+login = "octocat"
+repos = ["example/widget", "example/gadget"]
+mode = "live"
+model = "opus"
+effort = "high"
+claude_config_dir = "profiles/reviewer"
+rules = "RULES.md"

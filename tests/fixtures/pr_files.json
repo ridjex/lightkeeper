@@ -1,0 +1,7 @@
+[
+  {"sha": "1", "filename": "docs/wiki/index.md", "status": "modified", "additions": 1, "deletions": 1, "changes": 2,
+   "patch": "@@ -328,7 +328,7 @@ Intro\n-old link\n+new link"},
+  {"sha": "2", "filename": "docs/wiki/new.md", "status": "renamed", "previous_filename": "docs/wiki/old.md",
+   "additions": 0, "deletions": 0, "changes": 0},
+  {"sha": "3", "filename": "docs/logo.png", "status": "added", "additions": 0, "deletions": 0, "changes": 0}
+]
