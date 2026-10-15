@@ -4,6 +4,14 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-10-15
+
+### Changed
+
+- The rules template is a pure prompt again: the notes to the person and the choice of posture moved to
+  README "Writing rules" and to the `--init` output.
+- The settings template keeps `[agent]`, `[comment]` and `[screen]` headers live, so uncommenting one key works.
+
 ## [0.1.2] — 2026-10-15
 
 ### Changed

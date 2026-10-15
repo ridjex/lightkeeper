@@ -194,8 +194,16 @@ only the public summary and hidden trace. Private reasons and owner notification
 ## Writing rules
 
 - `rules.md` is passed to the model verbatim, after a fixed frame that names the four actions and the
-  three floors. Start from `lightkeeper/templates/rules.md`: it is written for a team where one
-  approval merges and the reviewer approves by default; change that first if it is not your team.
+  three floors. Keep only what the model should read: no notes to yourself, no alternatives to choose from.
+  `lightkeeper --init` copies `lightkeeper/templates/rules.md` as the starting point. It is written for a
+  team where one approval merges and the reviewer **approves by default**; if approval must stay with a
+  human, replace the paragraph that starts with "The owner's intent" by:
+
+  > The owner's intent: **comment by default**. Approval stays with a human: never answer `approve`.
+  > Answer `comment` with the pointers you would otherwise put into `watch`, and `request_changes` for red
+  > with a concrete defect in the diff.
+
+  and set `allowed = ["request_changes", "comment"]` for the repository, so the code enforces it.
 - `repos/<org>__<name>.md` adds notes for one repository under `# Repository notes` (edit from the Repositories screen with `n`).
 - `remarks` per repository tells the model to report blockers only, blockers and important findings, or
   everything it notices; the code also filters finding severity before rendering.

@@ -1444,6 +1444,8 @@ def main(argv=None) -> int:
         try:
             for path, created in init_config(args.config_dir):
                 print(f"{path}: {'created' if created else 'already existed'}")
+            print("edit settings.toml (login, repository) and rules.md: the model reads rules.md verbatim; "
+                  "the copy approves by default, see README \"Writing rules\" for the alternative")
             return 0
         except (SettingsError, OSError) as exc:
             print(f"settings error: {exc}", file=sys.stderr)

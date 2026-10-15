@@ -5,16 +5,16 @@
 [identity]
 login = "your-github-login"        # must match `gh auth status`
 
-# [agent]
+[agent]
 # engine = "claude"
 # model = "opus"
 # effort = "medium"
 # profile = "~/.claude-work"       # a Claude Code profile directory; omit for the default one
 
-# [comment]
+[comment]
 # disclose = false                 # true labels every posted comment as automated
 
-# [screen]
+[screen]
 # idle = "always"                  # "quiet" shows the picture only in empty Watching
 # tempo = 0.8                      # animation speed, 0.2 to 1.5
 # clock = true                     # use the local hour for the sky
