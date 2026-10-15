@@ -40,7 +40,8 @@ repository, read the next section.
 ## Setting up, step by step
 
 You need Python 3.11+, the GitHub CLI `gh` logged in as you, and the Claude Code CLI `claude` (2.1 or newer)
-logged in, or `ANTHROPIC_API_KEY` set. macOS and Linux.
+logged in, or `ANTHROPIC_API_KEY` set. macOS and Linux. The Homebrew formula brings Python, `gh` and the
+screen libraries with it; Claude Code is separate (`brew install --cask claude-code` or Anthropic's installer).
 
 1. Install. The terminal screen needs Rich and Textual (the `ui` extra); without them the tool prints log lines.
 
