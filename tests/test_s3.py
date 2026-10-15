@@ -440,7 +440,10 @@ class ScreenTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             with patch('lightkeeper.ui.repos.save_settings', wraps=save_settings) as save:
                 await pilot.click('#save')
-                await self.app.workers.wait_for_complete()  # The save runs on the worker queue.
+                try:
+                    await self.app.workers.wait_for_complete()  # The save runs on the worker queue.
+                except WorkerCancelled:  # A superseded access check; the latest one still completes.
+                    pass
                 await pilot.pause()
             self.assertEqual(save.call_args.args[1], {'repos': {'example/widget': {'remarks': 'all'}}})
             self.assertIs(self.app.screen, screen)
