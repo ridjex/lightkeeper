@@ -4,6 +4,16 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-10-15
+
+### Changed
+
+- The settings template written by `--init` sets only `login`, the repository and `post`; every other key is
+  commented out with its default, so omitted keys follow the installed version's defaults and written keys stay
+  the user's across updates.
+- The rules template opens with a choice of posture: approve by default, or comment by default with
+  approval left to a human.
+
 ## [0.1.1] — 2026-10-15
 
 ### Fixed

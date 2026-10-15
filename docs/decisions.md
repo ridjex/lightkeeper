@@ -3,6 +3,7 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-10-15 · **The settings template writes only what the user must decide** (login, repository, post); everything else is commented out so an omitted key follows the installed version's default and a release can change defaults without touching anyone's file.
 - 2026-10-15 · **The built-in editor is the default** so editing configuration needs no terminal-editor knowledge; Ctrl-E keeps the external editor available.
 - 2026-10-15 · **App.suspend runs only on the main thread** so Textual cannot render over the external editor while the Runner continues independently.
 - 2026-10-15 · **The prompt frame was edited once more before freezing** (grammar, no former-name clause) and the system prompt now travels in a private file, review bodies as JSON on stdin; neither appears in process arguments. Existing journals re-open their settled outcomes once; approved heads stay protected.

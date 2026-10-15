@@ -212,7 +212,10 @@ The directory is private (0700); loaded configuration files are 0600. Users of t
 run `lightkeeper --policy path/to/policy.toml` once; it migrates into the directory above and keeps
 the source. With no `settings.toml` the tool watches nothing and shows a persistent warning.
 
-Example `settings.toml` (all optional keys shown with their defaults):
+`lightkeeper --init` writes only `login` and one repository with `post`; every other key is commented out.
+A key you leave out follows the default of the installed version, so a release can change a default and say so
+in the changelog; a key you write is yours and no update changes it. Example `settings.toml` with every
+optional key and its default:
 
 ```toml
 [identity]

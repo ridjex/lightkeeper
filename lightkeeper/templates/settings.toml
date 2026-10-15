@@ -1,27 +1,29 @@
 # lightkeeper settings. Every repository starts in dry-run: nothing is posted until post = "live".
+# A key you leave commented out follows the default of the installed version; a key you write is yours
+# and no update changes it.
 
 [identity]
 login = "your-github-login"        # must match `gh auth status`
 
-[agent]
-engine = "claude"
-model = "opus"
-effort = "medium"
+# [agent]
+# engine = "claude"
+# model = "opus"
+# effort = "medium"
 # profile = "~/.claude-work"       # a Claude Code profile directory; omit for the default one
 
-[comment]
-disclose = false                   # true labels every posted comment as automated
+# [comment]
+# disclose = false                 # true labels every posted comment as automated
 
 # [screen]
-# idle = "always"                 # "quiet" shows the picture only in empty Watching
-# tempo = 0.8                     # animation speed, 0.2 to 1.5
-# clock = true                    # use the local hour for the sky
-# moon = true                     # show the moon at night
-# events = true                   # show occasional ships, whales and meteors
-# updates = true                  # check for a newer release once per 24 hours
+# idle = "always"                  # "quiet" shows the picture only in empty Watching
+# tempo = 0.8                      # animation speed, 0.2 to 1.5
+# clock = true                     # use the local hour for the sky
+# moon = true                      # show the moon at night
+# events = true                    # show occasional ships, whales and meteors
+# updates = true                   # check for a newer release once per 24 hours
 
 [repos."your-org/your-repo"]
 post = "dry-run"                   # "live" posts reviews as you
-allowed = ["approve", "request_changes", "comment"]
-remarks = "important"              # blockers | important | all
-deployments = false
+# allowed = ["approve", "request_changes", "comment"]
+# remarks = "important"            # blockers | important | all
+# deployments = false              # also review deployment gates
