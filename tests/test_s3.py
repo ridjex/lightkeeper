@@ -23,7 +23,7 @@ if HAS_UI:
     from lightkeeper.ui.agent import AgentPanel
     from lightkeeper.ui.repos import Confirm, Repositories, RepoForm, read_settings, SettingsCache
     from lightkeeper.ui.textual_app import TextualApp
-    from tests.test_textual import contents
+    from tests.test_textual import contents, wait_until
 
 from lightkeeper.commands import Command, CommandInbox
 from lightkeeper.engines.base import Identity
@@ -423,6 +423,7 @@ class ScreenTests(IsolatedAsyncioTestCase):
             self.assertEqual(cells[2].plain, 'dry-run')
             self.assertIn('access ok', cells[-1].plain)
             await pilot.press('space')
+            await wait_until(lambda: not load_settings(self.root).repo('example/widget').enabled)  # saved on the worker queue
             self.assertFalse(load_settings(self.root).repo('example/widget').enabled)
             self.assertEqual([c.kind for c in self.commands()], ['wake'])
             await pilot.press('3')
@@ -755,6 +756,7 @@ class ScreenTests(IsolatedAsyncioTestCase):
                 self.assertFalse(self.runner.cancelled)
                 release.set()
                 await pilot.pause()
+            await wait_until(lambda: not load_settings(self.root).repo('example/widget').enabled)  # saved on the worker queue
             self.assertFalse(load_settings(self.root).repo('example/widget').enabled)
             second.assert_called_once()
             self.assertIn('saved;', contents(self.app))
