@@ -9,6 +9,18 @@ your `claude` CLI, only on repositories you name, journals every decision and ke
 Not smart, universal: the script finds requests and collects the full context; a model decides by your
 `rules.md`; the script re-checks the pull request and posts. Every repository starts in dry-run.
 
+```sh
+brew install ridjex/tap/lightkeeper      # or: pipx install "lightkeeper[ui] @ git+https://github.com/ridjex/lightkeeper"
+lightkeeper --init                       # writes ~/.config/lightkeeper/{settings.toml,rules.md}; add your login, repos, rules
+lightkeeper --once --plain               # one dry pass, nothing is posted
+lightkeeper                              # the screen; q quits        (or --plain for log lines)
+brew services start lightkeeper          # run in the background; brew services stop lightkeeper to stop
+```
+
+Everything stays dry-run until you set `post = "live"` for a repository. Prerequisites, each step and
+what happens on disk: [Setting up, step by step](#setting-up-step-by-step). Before the first live
+repository, read the next section.
+
 ## Before you use it: what it sends and what it posts
 
 - **To Anthropic, through your `claude` CLI account:** for every pull request it reviews, the title,
@@ -25,7 +37,7 @@ Not smart, universal: the script finds requests and collects the full context; a
 - Nothing else: no telemetry, no server. Once a day it asks GitHub, through your `gh`, whether a newer
   lightkeeper release exists (`[screen] updates = false` turns that off).
 
-## Quick start
+## Setting up, step by step
 
 You need Python 3.11+, the GitHub CLI `gh` logged in as you, and the Claude Code CLI `claude` (2.1 or newer)
 logged in, or `ANTHROPIC_API_KEY` set. macOS and Linux.
