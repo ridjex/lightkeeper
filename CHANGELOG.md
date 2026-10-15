@@ -4,6 +4,14 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-10-15
+
+### Changed
+
+- Every posted comment is labelled `Automated review for @<login> (lightkeeper)` by default
+  (`[comment] disclose = true`); set it to `false` to post without the label. Users who never wrote the
+  key get the label from this version on.
+
 ## [0.1.3] — 2026-10-15
 
 ### Changed

@@ -31,7 +31,7 @@ class SettingsTests(unittest.TestCase):
         settings = self.load(MINIMUM + REPO)
         self.assertEqual(settings.login, "octocat")
         self.assertEqual(settings.agent, AgentSettings("claude", "opus", "medium", None, 600))
-        self.assertEqual(settings.comment, CommentSettings("en", False))
+        self.assertEqual(settings.comment, CommentSettings("en", True))
         self.assertEqual(settings.repo("example/widget"), RepoSettings("example/widget"))
         self.assertEqual(settings.repo("example/widget").allowed, ACTIONS)
         self.assertEqual((settings.rules, settings.template, settings.fresh), ("Review carefully.", "", False))

@@ -30,8 +30,9 @@ repository, read the next section.
 - **To GitHub, as you:** reviews and deployment approvals are posted with your `gh` login. GitHub attributes
   them to you; to your team and to branch protection they are your reviews, so an approval counts toward
   required approvals and CODEOWNERS. There is no GitHub App to install or revoke. Agree on this with your
-  team before you set a repository to `live`. Set `[comment] disclose = true` to label every comment as
-  automated, or limit `allowed` to `["comment", "request_changes"]` where a human approval is required.
+  team before you set a repository to `live`. Every comment carries the line `Automated review for @you
+  (lightkeeper)` unless you set `[comment] disclose = false`; limit `allowed` to `["comment", "request_changes"]`
+  where a human approval is required.
 - **On your disk:** `~/.local/state/lightkeeper/<login>/` keeps every prompt and answer, including
   code and logs, until you delete it.
 - Nothing else: no telemetry, no server. Once a day it asks GitHub, through your `gh`, whether a newer
@@ -171,7 +172,7 @@ in the default body; file paths sit inline in prose. For example:
 > One thing to keep in mind: the retry loop in orders/sync.py swallows timeouts silently.
 
 Every comment still ends with the same hidden HTML trace containing head, judgement hash and engine.
-This audit link supports deduplication, dismissal handling and takeover checks. `comment.disclose` defaults to `false`.
+This audit link supports deduplication, dismissal handling and takeover checks. `comment.disclose` defaults to `true`.
 When enabled, disclosure renders `Automated review for @<login> (lightkeeper)` at `{disclosure}`,
 or as the last paragraph before the hidden trace if the template omits that placeholder. It survives
 truncation. The default template uses only `why` and `watch`.
@@ -238,7 +239,7 @@ timeout_s = 600                    # positive integer
 
 [comment]
 language = "en"                    # reserved; write template text in your desired language
-disclose = false                   # opt in to visible disclosure with any template
+disclose = true                    # false removes the visible disclosure line
 
 [screen]
 idle = "always"                    # or "quiet": picture only while nothing is watched
