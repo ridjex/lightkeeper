@@ -77,13 +77,21 @@ logged in, or `ANTHROPIC_API_KEY` set. macOS and Linux.
    Each session folder holds the exact prompt (`prompt.md`), the model's answer (`decision.json`) and, when
    a review would be posted, the exact body (`rendered.md`).
 
-6. Keep it running with `lightkeeper` (the screen) or `lightkeeper --plain`. It checks every
-   minute and is still dry-run. When you trust its verdicts for a repository, set `post = "live"` for that
-   repository and restart.
+6. Run it for real. The working command is just the name; it checks every minute and keeps running until
+   you quit (`q` on the screen, `Ctrl-C` in plain mode):
 
-   Homebrew users can run it in the background instead: `brew services start lightkeeper` runs
-   `lightkeeper --plain` under launchd (macOS) or systemd (Linux) with the log in `$(brew --prefix)/var/log/lightkeeper.log`;
-   `lightkeeper --status` and the state folder work the same. Stop with `brew services stop lightkeeper`
+   ```sh
+   lightkeeper                    # the terminal screen
+   lightkeeper --plain            # the same loop as log lines, for a tmux window or a service
+   brew services start lightkeeper   # Homebrew: run --plain in the background under launchd or systemd
+   ```
+
+   It is still dry-run: every repository starts with `post = "dry-run"`, so nothing reaches GitHub. When you
+   trust its verdicts for a repository, set `post = "live"` for that repository in `settings.toml` (or on the
+   Repositories screen) and restart.
+
+   The Homebrew service writes its log to `$(brew --prefix)/var/log/lightkeeper.log`; `lightkeeper --status`
+   and the state folder work the same whichever way it runs. Stop it with `brew services stop lightkeeper`
    before upgrading.
 
 Updating: stop the running instance, then `brew upgrade lightkeeper` or `pipx upgrade lightkeeper`,
