@@ -97,10 +97,10 @@ class PostingTests(unittest.TestCase):
         self.assertEqual(result.published_findings, len(FINDINGS))
         self.assertNotIn("\n\n\n", result.body)
 
-    def test_all_placeholders_still_validate_and_disclosure_is_opt_in(self):
+    def test_all_placeholders_still_validate_and_disclosure_is_on_by_default(self):
         for template in ("{why}\n{watch}", LEGACY_TEMPLATE):
             validate_template(template)
-        self.assertFalse(CommentSettings().disclose)
+        self.assertTrue(CommentSettings().disclose)
         for disclose in (False, True):
             result = self.render(template="🔭 {why}\n\n{watch}\n\n{disclosure}", disclose=disclose)
             self.assertEqual("Automated review for @reviewer (lightkeeper)" in result.body, disclose)

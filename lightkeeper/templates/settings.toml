@@ -12,7 +12,7 @@ login = "your-github-login"        # must match `gh auth status`
 # profile = "~/.claude-work"       # a Claude Code profile directory; omit for the default one
 
 [comment]
-# disclose = false                 # true labels every posted comment as automated
+# disclose = true                  # every posted comment carries "Automated review for @you (lightkeeper)"; false removes it
 
 [screen]
 # idle = "always"                  # "quiet" shows the picture only in empty Watching

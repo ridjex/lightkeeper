@@ -34,7 +34,7 @@ class AgentSettings:
 @dataclass(frozen=True)
 class CommentSettings:
     language: str = "en"
-    disclose: bool = False
+    disclose: bool = True
 
 
 @dataclass(frozen=True)
@@ -222,7 +222,7 @@ def load_settings(config_dir: str | Path | None = None, *, include_text: bool = 
         profile = _value(agent, "profile", None, str, file, "agent")
     comment = _table(raw.get("comment", {}), file, "comment", {"language", "disclose"})
     comments = CommentSettings(_value(comment, "language", "en", str, file, "comment"),
-                               _value(comment, "disclose", False, bool, file, "comment"))
+                               _value(comment, "disclose", True, bool, file, "comment"))
     repos_raw = raw.get("repos", {})
     if not isinstance(repos_raw, dict):
         raise SettingsError(file, "repos", "expected a table")

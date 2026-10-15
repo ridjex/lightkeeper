@@ -204,6 +204,7 @@ class PullRequestLifecycle(LifecycleBase):
         kind, repo, number, sha, action, body = self.gh.writes[0]
         self.assertEqual((kind, sha, action), ("pr", HEAD, "approve"))
         self.assertEqual(body, "🔭 Approved: the tests cover the change.\n\n"
+                         "Automated review for @me (lightkeeper)\n\n"      # disclosure is on by default
                          + f"<!-- lightkeeper v2 head={HEAD[:7]} "
                          f"judgement={r.settings.judgement('org/repo').hash} engine=claude/opus -->")      # the private reason stays private
         self.assertEqual(self.notified, [])
