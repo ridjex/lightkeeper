@@ -168,10 +168,10 @@ class RenderTests(unittest.TestCase):
     def test_github_identity_header(self):
         screen = fixture_screen()
         for actual, expected in (("me", "gh me ✓"), ("other", "gh ✗ other"), (None, "gh …")):
-            runtime = dataclasses.replace(screen.runtime, login="me", gh_login=actual)
+            runtime = dataclasses.replace(screen.runtime, login="me", gh_login=actual, gh_confirmed=True if actual else None)
             shown = dataclasses.replace(screen, runtime=runtime)
             self.assertIn(expected, self.render_text(shown, width=140))
-        runtime = dataclasses.replace(screen.runtime, login="me", gh_login="me")
+        runtime = dataclasses.replace(screen.runtime, login="me", gh_login="me", gh_confirmed=True)
         self.assertIn("gh me ok", self.render_text(dataclasses.replace(screen, runtime=runtime), ascii=True))
 
     def render_text(self, screen, width=100, height=30, ascii=False, mono=100):

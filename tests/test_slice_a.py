@@ -95,14 +95,14 @@ class IdentityTests(unittest.TestCase):
                     gh.runs = [make_run()]
                     gh.pending[key[:2]] = [PENDING_PROD]
                     gh.notifications = [("org/repo", 100, "updated")]
-                gh.login = Mock(side_effect=["me", actual])
+                gh.login = Mock(side_effect=["me"] + [actual] * 3)
                 observer = Observer(Projection(), Runtime(login="me"))
                 journal = Journal(Path(directory) / "journal.jsonl")
                 runner = cli.Runner(make_settings(), gh, journal, FakeReviewer([Decision("approve", "ok", "ai")]),
-                                    observer=observer, notifier=Mock(), live_lock_held=True)
+                                    observer=observer, notifier=Mock(), live_lock_held=True, sleeper=Mock())
                 with patch.object(cli, "log") as log:
                     self.assertEqual(runner.tick(), {"applied" if actual == "me" else "defer": 1})
-                self.assertEqual(gh.login.call_count, 2)
+                self.assertEqual(gh.login.call_count, 4 if isinstance(actual, Exception) else 2)
                 self.assertEqual(len(gh.writes), int(actual == "me"))
                 alerts = {a.key: a for a in observer.snapshot.alerts}
                 if actual == "me":
@@ -113,9 +113,16 @@ class IdentityTests(unittest.TestCase):
                               f"gh login lookup failed, expected me: {actual}")
                     self.assertEqual(journal.defer_reason(key), reason)
                     self.assertFalse(journal.is_unknown(key))
-                    self.assertEqual(alerts["gh_identity"].level, "error")
-                    self.assertEqual(alerts["gh_identity"].text, reason)
-                    log.assert_any_call(reason)
+                    self.assertFalse(runner._identity_checked)
+                    if actual == "other":
+                        self.assertEqual(alerts["gh_identity"].level, "error")
+                        self.assertEqual(alerts["gh_identity"].text, reason)
+                        log.assert_any_call(reason)
+                    else:
+                        self.assertNotIn("gh_identity", alerts)
+                        self.assertEqual(observer.runtime.gh_login, "me")
+                        self.assertFalse(observer.runtime.gh_confirmed)
+                        log.assert_any_call(f"gh unreachable, retrying next tick: {actual}")
                     gh.login = Mock(return_value="me")
                     runner.reviewer = FakeReviewer([Decision("approve", "ok", "ai")])
                     self.assertEqual(runner.tick(), {"applied": 1})
@@ -124,10 +131,10 @@ class IdentityTests(unittest.TestCase):
     def test_invalid_identity_skips_whole_tick_and_logs_once_per_streak(self):
         with tempfile.TemporaryDirectory() as directory:
             gh = Mock(wraps=FakeGh())
-            gh.login.side_effect = ["other", GhError([], 1, "lookup failed"), "other", "me", "other"]
+            gh.login.side_effect = ["other", "other", "other", "me", "other"]
             observer = Observer(Projection(), Runtime(login="me"))
             runner = cli.Runner(make_settings(), gh, Journal(Path(directory) / "journal.jsonl"),
-                                observer=observer, notifier=Mock(), live_lock_held=True)
+                                observer=observer, notifier=Mock(), live_lock_held=True, sleeper=Mock())
             with patch.object(runner, "_tick", return_value={}) as tick, patch.object(cli, "log") as log:
                 for _ in range(3):
                     self.assertEqual(runner.tick(), {})
@@ -135,7 +142,7 @@ class IdentityTests(unittest.TestCase):
                     self.assertEqual(observer.snapshot.alerts[0].key, "gh_identity")
                     self.assertEqual(observer.snapshot.alerts[0].level, "error")
                     self.assertFalse(observer.runtime.last_check_ok)
-                self.assertEqual(gh.mock_calls, [call.login()] * 3)
+                self.assertEqual(gh.mock_calls, [call.login(timeout_s=15)] * 3)
                 log.assert_called_once_with("gh login is other, expected me")
                 self.assertEqual(runner.tick(), {})
                 tick.assert_called_once_with()
@@ -153,7 +160,7 @@ class IdentityTests(unittest.TestCase):
             reviewer = FakeReviewer([Decision("nothing", "no action", "ai")] * 2)
             runner = cli.Runner(make_settings(), gh, journal, reviewer, notifier=Mock(), live_lock_held=True)
             self.assertEqual(runner.tick(), {})
-            gh.login.assert_called_once_with()
+            gh.login.assert_called_once_with(timeout_s=15)
             self.assertEqual(reviewer.calls, 0)
             self.assertEqual(journal.records, 0)
             gh.login.return_value = "me"
@@ -181,7 +188,7 @@ class IdentityTests(unittest.TestCase):
                 runner = cli.Runner(make_settings(), gh, journal,
                                     FakeReviewer([Decision("approve", "ok", "ai")]), notifier=Mock(), live_lock_held=True)
                 self.assertEqual(runner.tick(), {})
-                self.assertEqual(gh.mock_calls, [call.login()])
+                self.assertEqual(gh.mock_calls, [call.login(timeout_s=15)])
                 self.assertFalse(runner.quarantined)
                 self.assertEqual(journal.path.read_bytes(), before)
                 self.assertEqual(journal.watched_prs(), [key[:2]])
@@ -209,7 +216,7 @@ class IdentityTests(unittest.TestCase):
             runner = cli.Runner(make_settings(), gh, journal,
                                 FakeReviewer([Decision("approve", "ok", "ai")]), notifier=Mock(), live_lock_held=True)
             self.assertEqual(runner.tick(), {})
-            self.assertEqual(gh.mock_calls, [call.login()])
+            self.assertEqual(gh.mock_calls, [call.login(timeout_s=15)])
             self.assertEqual(journal.path.read_bytes(), before)
             self.assertEqual(journal.pending_gates(), [key])
             self.assertEqual(journal.deferred_keys("deployment"), [list(key)])

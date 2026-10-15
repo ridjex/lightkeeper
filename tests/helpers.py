@@ -66,7 +66,7 @@ class FakeGh:
         self.saturated = False
         self.search_results: list | None = None             # None = every snapshot in a listed repo
 
-    def login(self):
+    def login(self, *, timeout_s=None):
         return "me"
 
     def search_review_requests(self, login, repos):

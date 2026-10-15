@@ -144,7 +144,8 @@ class ConfirmOwnerApprove(ModalScreen):
                               f"Model verdict: {self.verdict or 'not assessed'}\n"
                               f"Public summary: {self.summary or 'none'}\n"
                               f"Floor refusal: {self.floor or 'none'}\n"
-                              f"Effective mode: live · gh {self.runtime.gh_login or '?'} · expected @{self.runtime.login}"),
+                              f"Effective mode: live · gh {self.runtime.gh_login or '?'}"
+                              f"{' (unconfirmed)' if self.runtime.gh_confirmed is False else ''} · expected @{self.runtime.login}"),
                          markup=False)
             yield Static(text("Note (required to override the floor)" if self.floor else "Note (optional)"), markup=False)
             yield Static(text(), markup=False, id="owner-freshness")

@@ -173,12 +173,12 @@ class CutoverTests(unittest.TestCase):
                             self.runner.journal = self.journal
                             self.save(allowed=('approve',))
                             self.reload()
-                        def login():
+                        def login(*, timeout_s=None):
                             mutate()
                             return 'me'
                         self.gh.login = Mock(side_effect=login)
                         self.assertEqual(process(), outcome)
-                        self.gh.login.assert_called_once_with()
+                        self.gh.login.assert_called_once_with(timeout_s=15)
                         self.assertEqual(self.journal.defer_reason(key), reason)
                         self.assertFalse(self.gh.writes)
                         self.assertEqual(self.runner.reviewer.calls, 1)
@@ -504,7 +504,7 @@ class StartupTests(unittest.TestCase):
                              settings.repo(repo).remarks, SCHEMA).hash
         Journal(self.state / 'journal.jsonl').append(
             kind='pr', key=(repo, 7, HEAD), event='nothing', policy=previous, mode='live', fingerprint='fp')
-        self.gh.login = lambda: 'octocat'
+        self.gh.login = lambda **kwargs: 'octocat'
         result = self.main(['--allow-live'], lambda *args: 0)
         self.assertEqual(result[0], 0, result[2])
         self.assertIn(f"rehash frame 2 -> { {repo: settings.judgement(repo).hash} }", result[1])
@@ -524,7 +524,7 @@ class StartupTests(unittest.TestCase):
             key = ('example/widget', n, HEAD)
             keys.append(key)
             journal.append(kind='pr', key=key, event=event, policy=legacy, mode='live', fingerprint='fp')
-        self.gh.login = lambda: 'octocat'
+        self.gh.login = lambda **kwargs: 'octocat'
         def loop(args, settings, runner, stop):
             for key in keys:
                 self.assertTrue(runner.journal.is_final(key, settings.judgement(key[0]).hash, 'live', 'fp'))

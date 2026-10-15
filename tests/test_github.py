@@ -153,6 +153,14 @@ class GhTests(unittest.TestCase):
         self.assertIn("repos/org/repo/actions/jobs/5/logs", runner.calls[0][0])
         self.assertNotIn("run", runner.calls[0][0][:3])
 
+    def test_login_timeout_and_malformed_output(self):
+        runner = FakeRunner(stdout='{"login": "me"}')
+        self.assertEqual(Gh(runner=runner).login(timeout_s=15), "me")
+        self.assertEqual(runner.calls[0][1]["timeout"], 15)
+        for output in ('{', '{}', '[]', '{"login": null}', '{"login": 42}', '{"login": " "}'):
+            with self.subTest(output=output), self.assertRaises((ValueError, KeyError, TypeError)):
+                Gh(runner=FakeRunner(stdout=output)).login(timeout_s=15)
+
     def test_nonzero_exit_raises_gh_error(self):
         with self.assertRaises(GhError) as ctx:
             Gh(runner=FakeRunner(returncode=1, stderr="HTTP 404: Not Found")).login()

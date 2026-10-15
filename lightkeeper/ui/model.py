@@ -46,6 +46,7 @@ class Runtime:
     started_at: float = 0
     login: str = ""
     gh_login: str | None = None
+    gh_confirmed: bool | None = None  # None until the first lookup; False retains only the last known login.
     engine_identity: Identity | None = None
     engine_name: str = "claude"
     engine_profile: str = "default"

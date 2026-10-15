@@ -78,7 +78,8 @@ class AgentPanel(Screen):
             + "\n"
             + f"Engine: {rt.engine_name}\nModel: {rt.model}\nEffort: {rt.effort}\nProfile: {profile}\n"
             f"Auth: {auth}\nFix: {fix or 'none'}\n"
-            f"gh: {rt.gh_login or 'unchecked'} · expected: {rt.login or 'unconfigured'}\n"
+            f"gh: {rt.gh_login or 'unchecked'}{' (unconfirmed)' if rt.gh_confirmed is False else ''} "
+            f"· expected: {rt.login or 'unconfigured'}\n"
             f"Config dir: {rt.config_dir}\nState dir: {rt.state_dir}\n"
             f"Notifications: {'on' if rt.notifications else 'off'}\n"
             f"Uptime: {age(max(0, self.app.clock() - rt.started_at))}"))

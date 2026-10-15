@@ -4,6 +4,14 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-10-15
+
+### Changed
+
+- GitHub identity lookups retry twice with short timeouts; transient failures show the last known login
+  as unconfirmed and alert only after three failed checks in a row. Writes still require a fresh matching
+  login, and an account mismatch stops and alerts immediately.
+
 ## [0.1.4] — 2026-10-15
 
 ### Changed

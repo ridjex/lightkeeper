@@ -248,8 +248,11 @@ class Gh:
         return json.loads(self.run(args, timeout_s=timeout_s, input=input))
 
     # --- reads
-    def login(self) -> str:
-        return self.json(["api", "user"])["login"]
+    def login(self, *, timeout_s: int | None = None) -> str:
+        login = self.json(["api", "user"], timeout_s=timeout_s)["login"]
+        if not isinstance(login, str) or not login.strip():
+            raise ValueError("malformed GitHub login")
+        return login
 
     def search_review_requests(self, login: str, repos: tuple[str, ...]) -> tuple[list[tuple[str, int]], bool]:
         """Open PRs in `repos` where `login` is directly requested as a reviewer right now (team requests are

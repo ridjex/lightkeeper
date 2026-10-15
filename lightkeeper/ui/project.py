@@ -291,7 +291,7 @@ class Observer:
                     fields["screen_revision"] = self.runtime.screen_revision + 1
                 self.runtime = replace(self.runtime, **fields)
         elif event == "gh_identity":
-            self.runtime = replace(self.runtime, gh_login=fields["login"])
+            self.runtime = replace(self.runtime, gh_login=fields["login"], gh_confirmed=fields["confirmed"])
         elif event == "engine_identity":
             self.runtime = replace(self.runtime, engine_identity=fields["identity"], engine_name=fields["name"],
                                    engine_profile=fields["profile"])

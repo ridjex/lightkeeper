@@ -397,7 +397,7 @@ class ScreenTests(IsolatedAsyncioTestCase):
         runtime = replace(screen.runtime, config_dir=str(self.root), state_dir=str(self.root / 'state'),
                           live_lock_held=False, dry_repos=('example/widget',),
                           engine_identity=Identity(False, 'test-account', 'needs login', 'claude auth login'),
-                          repo_checks=(('example/widget', 'access ok · default branch main'),), gh_login='reviewer')
+                          repo_checks=(('example/widget', 'access ok · default branch main'),), gh_login='reviewer', gh_confirmed=True)
         self.observer = Observer(Projection(), runtime)
         self.observer.snapshot = replace(screen, runtime=runtime)
         self.runner = Mock(cancelled=False, commands=CommandInbox(threading.Event()))

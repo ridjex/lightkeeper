@@ -44,9 +44,9 @@ class OwnerFixture:
         self.pr = make_pr()
         self.key = (self.pr.repo, self.pr.number, HEAD)
         self.gh.pr_snapshots[self.key[:2]] = [self.pr]
-        self.runner = cli.Runner(self.settings, self.gh, self.journal, observer=self.observer, live_lock_held=True)
+        self.runner = cli.Runner(self.settings, self.gh, self.journal, observer=self.observer, live_lock_held=True, sleeper=Mock())
         self.runner.refresh_settings(self.settings)
-        self.observer('gh_identity', login='me')
+        self.observer('gh_identity', login='me', confirmed=True)
 
     def disk_settings(self, **repo_fields):
         settings = replace(self.settings, repos={self.pr.repo: replace(self.settings.repo(self.pr.repo), **repo_fields)})
@@ -275,7 +275,7 @@ class OwnerRunnerTests(OwnerFixture, TestCase):
             order.append('settings')
             return original_load(*args)
         self.gh.pull_request = lambda *args: (order.append('fetch') or self.pr)
-        self.gh.login = lambda: (order.append('identity') or 'me')
+        self.gh.login = lambda **kwargs: (order.append('identity') or 'me')
         def submit(pr, action, body):
             order.append('post')
             replay = Journal(self.journal.path)
@@ -311,7 +311,7 @@ class OwnerRunnerTests(OwnerFixture, TestCase):
         replay = Journal(self.journal.path, observer=self.observer.feed)
         replay.replay()
         self.assertTrue(replay.is_unknown(self.key))
-        self.runner = cli.Runner(self.settings, self.gh, replay, observer=self.observer, live_lock_held=True)
+        self.runner = cli.Runner(self.settings, self.gh, replay, observer=self.observer, live_lock_held=True, sleeper=Mock())
         self.assertIn('unknown write', self.command().text)
         self.assertEqual(self.runner.process_pr(*self.key[:2]), 'unknown')
         body = self.gh.writes[0][-1]

@@ -29,7 +29,7 @@ class MenuTests(IsolatedAsyncioTestCase):
         (self.root / 'settings.toml').write_text('[identity]\nlogin="reviewer"\n')
 
     def app(self, **fields):
-        rt = Runtime(login='reviewer', gh_login='reviewer', config_dir=str(self.root), **fields)
+        rt = Runtime(login='reviewer', gh_login='reviewer', gh_confirmed=True, config_dir=str(self.root), **fields)
         observer = Observer(Projection(), rt)
         worker = Mock(runner=Mock(cancelled=False, commands=CommandInbox(threading.Event())),
                       poll_join=Mock(return_value=False))

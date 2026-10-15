@@ -174,15 +174,20 @@ def header_lines(screen: Screen, mono_now: float, width: int, ascii=False, queue
     elapsed = max(0, mono_now - runtime.phase_since)
     header = text(" lightkeeper", "bold")
     header.append("  ")
-    matches = runtime.gh_login == runtime.login
+    failed = any(a.key == "gh_identity" for a in screen.alerts)
+    matches = runtime.gh_confirmed is True and runtime.gh_login == runtime.login
+    actual = runtime.gh_login if runtime.gh_confirmed else None
     identity = (f"gh {clean(runtime.gh_login)} {'ok' if ascii else '✓'}" if matches else
-                f"gh {'x' if ascii else '✗'} {clean(runtime.gh_login or 'unknown')}")
-    unchecked = runtime.gh_login is None and not any(a.key == "gh_identity" for a in screen.alerts)
+                f"gh {'x' if ascii else '✗'} {clean(actual or 'unknown')}")
+    unchecked = runtime.gh_confirmed is None and not failed
+    unconfirmed = runtime.gh_confirmed is False and not failed
     if unchecked:
         identity = "gh ..." if ascii else "gh …"
-    if not unchecked and not matches:
+    elif unconfirmed:
+        identity = f"gh ? {clean(runtime.gh_login or 'unknown')} (unconfirmed)"
+    elif not matches:
         identity += f" (expected {clean(runtime.login)})"
-    header.append(identity + "  ", "dim" if unchecked else "green" if matches else "red")
+    header.append(identity + "  ", "dim" if unchecked or unconfirmed else "green" if matches else "red")
     health = runtime.engine_identity
     mark = ("..." if ascii else "…") if health is None else (("ok" if ascii else "✓") if health.ok else ("x" if ascii else "✗"))
     header.append(f"{clean(runtime.engine_name)} {clean(runtime.engine_profile)} {mark}  ",

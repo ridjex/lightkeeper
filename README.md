@@ -154,8 +154,9 @@ workflow, every job and the logs before the gate; the model answers `approve | i
   kept, and the same input is not retried.
 - `dry-run` mode does everything except the final write, and prefixes notifications with `[dry-run]`.
 - The `gh` login is checked every tick and immediately before each review or deployment approval.
-  A mismatch or failed lookup defers writes, logs the reason and raises an error alert; a matching check
-  clears it. The header shows `gh <login> ✓` or `gh ✗ <actual>` (`unknown` if lookup failed).
+  Failed lookups retry twice with short pauses and defer writes if all attempts fail; three consecutive
+  failed checks raise an error alert. A mismatch stops and alerts immediately. A matching check clears
+  the alert; the header retains the last known login as unconfirmed during transient lookup failures.
 - Checks still running after 3 hours → one notification, no approval. A context too large to send → no
   approval, one notification.
 
@@ -338,6 +339,7 @@ the keys, the PR detail, the editors and the idle scene is in [docs/screen.md](d
 
 ## Troubleshooting
 
+- `gh ? <login> (unconfirmed)` means the last known login could not be verified; writes wait, and an error alert appears after three failed checks in a row.
 - `gh ✗ <actual>` in the header: `gh auth status` shows another account than `[identity] login`; writes are
   deferred until it matches.
 - `claude ✗`: the Agent screen (`3`) shows the exact fix, usually `claude auth login` for the configured profile,

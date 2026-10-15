@@ -444,7 +444,7 @@ class RunnerTests(TestCase):
 class PilotTests(IsolatedAsyncioTestCase):
     def app(self, screen=None):
         screen = screen or fixture_screen()
-        screen = replace(screen, runtime=replace(screen.runtime, gh_login=screen.runtime.login))
+        screen = replace(screen, runtime=replace(screen.runtime, gh_login=screen.runtime.login, gh_confirmed=True))
         observer = Observer(Projection(), screen.runtime)
         observer.snapshot = screen
         runner = Mock(cancelled=False, commands=CommandInbox(threading.Event()))
@@ -773,7 +773,7 @@ class PilotTests(IsolatedAsyncioTestCase):
     async def test_fixture_literal_title_refresh_and_keys(self):
         screen = fixture_screen()
         row = screen.watching[0]
-        screen = replace(screen, runtime=replace(screen.runtime, gh_login=screen.runtime.login),
+        screen = replace(screen, runtime=replace(screen.runtime, gh_login=screen.runtime.login, gh_confirmed=True),
                          watching=(replace(row, item=replace(row.item, title='[@click=app.quit]')), *screen.watching[1:]))
         observer = Observer(Projection(), screen.runtime)
         observer.snapshot = screen

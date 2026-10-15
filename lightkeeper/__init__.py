@@ -1,3 +1,3 @@
 """lightkeeper: approve GitHub review requests and deployment gates on your behalf, by policy."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"

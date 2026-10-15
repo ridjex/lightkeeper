@@ -84,7 +84,11 @@ Code, after the model (`Runner._write_pr`): re-fetch; same head and fingerprint 
 checks with their job links, files, other people's reviews) or `defer`; re-run eligibility; an automated
 review with the same action already on this head → `applied` without posting. Reload and validate settings
 immediately before POST: repository enabled, action allowed, deployment switch on for gates, assessed judgement
-unchanged, effective mode live, live lock held and current GitHub identity matching. Disable/stale/invalid cases
+unchanged, effective mode live, live lock held and current GitHub identity matching. Identity is also checked
+before every tick: lookup failures retry twice (1 s then 3 s pauses, 15 s timeout per attempt); exhausted
+checks skip the tick and defer writes. Three consecutive failed checks raise an error alert; until then the header shows the
+last known login as unconfirmed. Any successful lookup resets the failure streak; a mismatch stops and
+alerts immediately without retry, while a matching login clears the alert. Disable/stale/invalid cases
 defer; disallowed actions journal `withheld` with the proposal body, notification and reason. The assessment stays
 available across defer/withheld and replay. A later tick rechecks eligibility, context and judgement and re-settles
 without a model call when only authority changed. No alternate action is substituted. Then one

@@ -193,18 +193,21 @@ def check_repo(gh, name: str) -> str:
 
 class Runner:
     def __init__(self, settings: Settings, gh, journal: Journal, reviewer=None, clock=time.time, notifier=macos_notify,
-                 observer=None, live_lock_held=False, global_mode="live"):
+                 observer=None, live_lock_held=False, global_mode="live", sleeper=time.sleep):
         self.settings = settings
         self.global_mode = global_mode
         self.gh = gh
         self.journal = journal
         self.reviewer = reviewer
         self.clock = clock
+        self.sleeper = sleeper
         self.notifier = notifier
         self.observer = observer or (lambda event, **fields: None)
         self.live_lock_held = live_lock_held
         self._identity_reason = None
         self._identity_checked = False
+        self._identity_failures = 0
+        self._last_gh_login = None
         self._writes_blocked = None
         self._tick_failures = 0       # consecutive ticks that raised: drives the backoff
         self._error_ticks = 0         # consecutive ticks with any item error: drives the alert only
@@ -434,18 +437,35 @@ class Runner:
 
     def _check_identity(self) -> str | None:
         """Check the account before a tick or POST; log once per failure streak."""
-        actual = None
-        try:
-            actual = self.gh.login()
+        self._identity_checked = False
+        confirmed = False
+        # Three 15-second attempts plus 1/3-second pauses fit within the minute between ticks.
+        for delay in (0, 1, 3):
+            if delay:
+                self.sleeper(delay)
+            try:
+                actual = self.gh.login(timeout_s=15)
+            except Exception as exc:  # malformed output and transport failures both block writes
+                error = f"GitHub rate limited: {exc}" if isinstance(exc, GhError) and exc.rate_limited else str(exc)
+                continue
+            confirmed = True
+            self._last_gh_login = actual
+            self._identity_failures = 0
             reason = None if actual == self.settings.login else f"gh login is {actual}, expected {self.settings.login}"
-        except Exception as exc:  # failed lookup (including malformed output) must never permit a write
-            reason = f"gh login lookup failed, expected {self.settings.login}: {exc}"
-        if reason and not self._identity_reason:
-            log(reason)
+            if reason and reason != self._identity_reason:
+                log(reason)
+            alert = reason
+            break
+        else:
+            self._identity_failures += 1
+            reason = f"gh login lookup failed, expected {self.settings.login}: {error}"
+            if self._identity_failures == 1:
+                log(f"gh unreachable, retrying next tick: {error}")
+            alert = reason if self._identity_failures >= 3 else None
         self._identity_reason = reason
         self._identity_checked = reason is None
-        self.observe("gh_identity", login=actual)
-        self.condition("gh_identity", reason)
+        self.observe("gh_identity", login=self._last_gh_login, confirmed=confirmed)
+        self.condition("gh_identity", alert)
         self.observe("alert_attempt", key="gh_identity", text=reason or "gh identity ok")
         return reason
 
@@ -1252,6 +1272,7 @@ class Runner:
             self.condition("reviewer_paused", None)
         try:
             if self.settings.login and self._check_identity():
+                # No login confirmation means no writes; skip this tick and retry in a minute.
                 self.observe("tick_done", ok=False, seconds=time.monotonic() - started)
                 self._wake_reason = ""
                 return {}

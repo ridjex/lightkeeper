@@ -3,6 +3,7 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-10-15 · **Identity lookup failures retry and alert only after three failed checks** to avoid transient network noise while still blocking writes; a confirmed account mismatch stops and alerts at once.
 - 2026-10-15 · **Disclosure is on by default.** A public tool used by strangers in any jurisdiction should label automated comments unless its user decides otherwise; the first-person posting stays, the label is one line.
 - 2026-10-15 · **Template files that reach the model contain only what the model should read.** Notes to the person and alternatives to choose from live in README and the `--init` output; a chooser left in the file would hand the model two contradicting postures.
 - 2026-10-15 · **The settings template writes only what the user must decide** (login, repository, post); everything else is commented out so an omitted key follows the installed version's default and a release can change defaults without touching anyone's file.
