@@ -82,6 +82,7 @@ class AgentPanel(Screen):
             f"· expected: {rt.login or 'unconfigured'}\n"
             f"Config dir: {rt.config_dir}\nState dir: {rt.state_dir}\n"
             f"Notifications: {'on' if rt.notifications else 'off'}\n"
+            f"{self.app.screen_rate()}\n"
             f"Uptime: {age(max(0, self.app.clock() - rt.started_at))}"))
         result = rt.last_command.text if rt.last_command else ""
         self.query_one("#agent-footer", Static).update(footer_text(

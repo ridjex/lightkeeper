@@ -547,7 +547,8 @@ class UXPilots(IsolatedAsyncioTestCase):
         observer.snapshot = snapshot
         worker = Mock(runner=Mock(cancelled=False, commands=CommandInbox(threading.Event())),
                       poll_join=Mock(return_value=False))
-        app = TextualApp(observer, worker, clock=clock or (lambda: 100))
+        # Layout pilots must not interpret screenshot/export time as terminal backpressure.
+        app = TextualApp(observer, worker, clock=clock or (lambda: 100), mono=lambda: 100)
         app.theme = 'textual-dark'
         return app
 

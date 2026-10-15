@@ -21,8 +21,17 @@ rows; it hides if its slot would leave no room for a History row. The Watching m
 if alerts and the fixed blocks together exceed the terminal height, Overview scrolls to keep History
 reachable.
 Tempo defaults to 0.8; the local-hour palette and sun/moon position, moon and rare events are on.
-The scene runs at 10 fps while visible, 1 fps when the app loses focus, and pauses whenever neither
-slot is visible, including behind other screens. ASCII/non-UTF-8
+The scene starts at 10 fps while visible. A timer more than one frame interval late skips that frame
+and steps down through 5, 2 and 1 fps; 30 consecutive on-time frames recover one step. Losing focus
+caps it at 1 fps; focus restores the adaptive rate. It pauses whenever neither slot is visible, including
+behind other screens. Fewer frames show the same scene at the same time; tempo still scales only scene clocks.
+The Agent screen (`3`) shows `Screen: 10 fps`, or the reduced rate, `terminal behind` and the total
+frames skipped; expanded Overview help (`?`) shows it too.
+Set `LIGHTKEEPER_SCREEN_TRACE=1` to append a JSON line every five seconds to `screen.log` in the state
+directory (0600). Each window records UTC time, interval, rendered/skipped frames, maximum timer lateness,
+call counts and maximum/mean durations of snapshot refresh and animation, and terminal width/height.
+Intervals, lateness and durations are in seconds. Empty or unwritable state directories are silently skipped.
+ASCII/non-UTF-8
 and NO_COLOR terminals get a monochrome version of the same picture. The lighthouse watches rolling
 sine waves with eight fixed constellation slots: the first N light for N watched repositories,
 capped at eight, with an exact "N stars" label. Stars stay put when a disc passes in front of them.

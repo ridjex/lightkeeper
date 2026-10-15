@@ -4,6 +4,18 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-10-15
+
+### Changed
+
+- Idle frames adapt from 10 through 5, 2 and 1 fps when the terminal falls behind, skipping late frames
+  and recovering gradually without slowing scene time. Unfocused screens remain at 1 fps.
+
+### Added
+
+- Effective screen rate and skipped-frame count on the Agent screen and expanded Overview help.
+- Opt-in `LIGHTKEEPER_SCREEN_TRACE=1` five-second timing and frame diagnostics in private `screen.log`.
+
 ## [0.1.5] — 2026-10-15
 
 ### Changed

@@ -24,6 +24,7 @@ from .project import label
 from .platform import clipboard as system_clipboard, open_folder
 from .detail import ConfirmOwnerApprove, PRDetail
 from .agent import AgentPanel
+from .screen_trace import ScreenTrace
 from .editor import Editor
 from .repos import Repositories, RepoForm, read_settings, error_text
 from .menu import Menu, ScreenForm
@@ -71,14 +72,17 @@ class TextualApp(App):
         Binding("L", "logs", "State folder", priority=True),
     ]
     SECTIONS = ("alerts", "watching", "history")
+    IDLE_INTERVALS = (1 / 10, 1 / 5, 1 / 2, 1)
 
-    def __init__(self, observer, worker, *, opener=None, clock=None, clipboard=None, folder_opener=open_folder):
+    def __init__(self, observer, worker, *, opener=None, clock=None, mono=time.monotonic,
+                 clipboard=None, folder_opener=open_folder):
         super().__init__()
         self.observer, self.worker = observer, worker
         self.opener = opener if opener is not None else webbrowser.open
         self.folder_opener = folder_opener
         self.copy_command = clipboard if clipboard is not None else self._copy_command
         self.clock = clock if clock is not None else lambda: time.monotonic()
+        self.mono = mono
         self.ascii = (os.environ.get("LIGHTKEEPER_ASCII") == "1"
                       or (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "") != "utf8")
         self._render_failed = False
@@ -87,7 +91,13 @@ class TextualApp(App):
         self._idle_layout = None
         self._idle_compact_key = None
         self._idle_visible = False
-        self._idle_interval = 1 / 10
+        self._idle_step = 0
+        self._idle_blurred = False
+        self._idle_on_time = 0
+        self._idle_skipped = 0
+        self._idle_interval = self.IDLE_INTERVALS[0]
+        self._idle_due = self.mono() + self._idle_interval
+        self._screen_trace = ScreenTrace() if os.environ.get("LIGHTKEEPER_SCREEN_TRACE") == "1" else None
         self.rows = []  # (section, row); index is the one cursor across all three sections
         self.cursor = 0
         self.help_visible = False
@@ -212,11 +222,13 @@ class TextualApp(App):
         self._idle_timer = self.set_interval(self._idle_interval, self.animate_idle, pause=True)
         self.screen_change_signal.subscribe(self, self.idle_screen_changed, immediate=True)
         self._refresh_timer = self.set_interval(0.25, self.refresh_snapshot)
+        if self._screen_trace is not None:
+            self._trace_timer = self.set_interval(5, self.write_screen_trace)
         self.refresh_snapshot()
 
     def on_unmount(self):
         self._idle_visible = False
-        for name in ("_refresh_timer", "_idle_timer"):
+        for name in ("_refresh_timer", "_idle_timer", "_trace_timer"):
             timer = getattr(self, name, None)
             if timer is not None:
                 timer.stop()
@@ -228,10 +240,11 @@ class TextualApp(App):
         except Exception:
             self.render_error()
 
-    def idle_rate(self, interval):
-        if interval == self._idle_interval:
+    def idle_rate(self, interval, *, reset=False):
+        if interval == self._idle_interval and not reset:
             return
         self._idle_interval = interval
+        self._idle_due = self.mono() + interval
         if not self.is_running:
             return
         if hasattr(self, "_idle_timer"):
@@ -239,19 +252,60 @@ class TextualApp(App):
             self._idle_timer = self.set_interval(interval, self.animate_idle, pause=not self._idle_visible)
 
     def on_app_blur(self, event: events.AppBlur):
+        self._idle_blurred = True
+        self._idle_on_time = 0
         self.idle_rate(1)
 
     def on_app_focus(self, event: events.AppFocus):
-        self.idle_rate(1 / 10)
+        self._idle_blurred = False
+        self._idle_on_time = 0
+        self.idle_rate(self.IDLE_INTERVALS[self._idle_step])
+
+    def screen_rate(self):
+        result = f"Screen: {1 / self._idle_interval:g} fps"
+        if self._idle_step:
+            result += ", terminal behind"
+        if self._idle_skipped:
+            result += f" ({self._idle_skipped} frames skipped)"
+        if self._idle_blurred:
+            result += " · unfocused"
+        return result
+
+    def write_screen_trace(self):
+        if self._screen_trace is not None:
+            self._screen_trace.write(self.snapshot.runtime.state_dir, self._idle_interval, self.size)
 
     def animate_idle(self):
-        if not self._idle_visible:
-            return
+        started = self.mono()
         try:
+            if not self._idle_visible:
+                return
+            late = started - self._idle_due
+            if self._screen_trace is not None:
+                self._screen_trace.max_lateness = max(self._screen_trace.max_lateness, late)
+            if late > self._idle_interval:
+                self._idle_skipped += 1
+                if self._screen_trace is not None:
+                    self._screen_trace.skipped += 1
+                self._idle_on_time = 0
+                self._idle_step = min(self._idle_step + 1, len(self.IDLE_INTERVALS) - 1)
+                # Re-arm even at the slowest rate: never catch up with a burst of old frames.
+                self.idle_rate(1 if self._idle_blurred else self.IDLE_INTERVALS[self._idle_step], reset=True)
+                return
+            self._idle_due += self._idle_interval
+            if not self._idle_blurred:
+                self._idle_on_time += 1
+                if self._idle_on_time == 30:  # Recover slowly so a busy terminal can drain.
+                    self._idle_on_time = 0
+                    self._idle_step = max(0, self._idle_step - 1)
+                    self.idle_rate(self.IDLE_INTERVALS[self._idle_step])
             self.refresh_idle(self.snapshot, self.clock(),
                               self.size.width - self.overview.scrollbar_size_vertical, force=True)
         except Exception:
             self.render_error()
+        finally:
+            if self._screen_trace is not None:
+                self._screen_trace.duration("animate_idle", self.mono() - started)
 
     def action_interrupt(self):
         # Ctrl-C is a reflex in editors; unsaved text must not vanish with the app.
@@ -363,7 +417,11 @@ class TextualApp(App):
         visible = panel.display and self.screen is self.overview
         if visible != self._idle_visible:
             self._idle_visible = visible
-            (self._idle_timer.resume if visible else self._idle_timer.pause)()
+            self._idle_on_time = 0
+            if visible:
+                self.idle_rate(self._idle_interval, reset=True)
+            else:
+                self._idle_timer.pause()
             force = True
         if not visible:
             self._idle_compact_key = None
@@ -377,6 +435,8 @@ class TextualApp(App):
                                     free_rows=free_rows, no_color=self.no_color,
                                     look=Look(tempo=screen.runtime.tempo, daytime=screen.runtime.clock,
                                               moon=screen.runtime.moon, events=screen.runtime.events)))
+            if self._screen_trace is not None:
+                self._screen_trace.rendered += 1
             self._idle_layout = layout
             self._idle_compact_key = compact_key
 
@@ -451,6 +511,15 @@ class TextualApp(App):
                     table.focus()
 
     def refresh_snapshot(self):
+        if self._screen_trace is None:
+            return self._refresh_snapshot()
+        started = self.mono()
+        try:
+            return self._refresh_snapshot()
+        finally:
+            self._screen_trace.duration("refresh_snapshot", self.mono() - started)
+
+    def _refresh_snapshot(self):
         if not self.is_running:
             return
         overview = getattr(self, "overview", None)
@@ -510,7 +579,7 @@ class TextualApp(App):
     def update_footer(self, screen=None):
         screen = screen or self.snapshot
         hints = ("↑↓ move · Tab section · n needs you · Enter detail/run/alert · o GitHub · r check now"
-                 + (" · t retry · c copy fix" if self.help_visible else ""))
+                 + (f" · t retry · c copy fix · {self.screen_rate()}" if self.help_visible else ""))
         message = " · ".join(v for v in (self.message, screen.runtime.last_command.text
                                          if screen.runtime.last_command else "") if v)
         self.query_one("#footer", Static).update(footer_text(1, hints, message))
