@@ -1,8 +1,11 @@
 # Decisions
 
-- 2026-10-15 · **The prompt frame was edited once more before freezing** (grammar, no former-name clause) and the system prompt now travels in a private file, review bodies as JSON on stdin; neither appears in process arguments. Existing journals re-open their settled outcomes once; approved heads stay protected.
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
+
+- 2026-10-15 · **The built-in editor is the default** so editing configuration needs no terminal-editor knowledge; Ctrl-E keeps the external editor available.
+- 2026-10-15 · **App.suspend runs only on the main thread** so Textual cannot render over the external editor while the Runner continues independently.
+- 2026-10-15 · **The prompt frame was edited once more before freezing** (grammar, no former-name clause) and the system prompt now travels in a private file, review bodies as JSON on stdin; neither appears in process arguments. Existing journals re-open their settled outcomes once; approved heads stay protected.
 
 - 2026-10-14 · **Menu, screen settings and the update reminder.** `m` opens a menu with every screen, action and setting on every screen; a Screen settings form patches only the `[screen]` table and applies at once; the Agent template key moved to `T`. Once a day the runner asks GitHub for the latest release through the user's `gh` and shows `update X.Y.Z` in the header; `[screen] updates = false` turns it off. The idle picture defaults to `always`. Audit fixes before release: session paths built only from validated parts and checked to stay under the state root, login validated as a GitHub login, Textual ≥ 8.2.7 and Rich ≥ 14.2, a failed journal append rolled back to its start, a stop on journals written by a newer version, umask 0077, control sequences stripped from plain output, migration resume trusting unchanged inputs, preview only in a terminal, every `gh` call pinned to github.com.
 - 2026-10-14 · **Renamed to lightkeeper**, the lighthouse keeper who watches while you are away. Reviews posted
@@ -51,6 +54,3 @@ belongs in its commit and pull request.
   notifications are overwritten by later events; deployment requests are their own threads.
 - 2026-09-17 · **Universal, not smart.** The code owns eligibility and writes; a model decides every request by
   a human-written rules file. No path globs, author lists or size ladders.
-
-- 2026-10-15 · **The built-in editor is the default** so editing configuration needs no terminal-editor knowledge; Ctrl-E keeps the external editor available.
-- 2026-10-15 · **App.suspend runs only on the main thread** so Textual cannot render over the external editor while the Runner continues independently.

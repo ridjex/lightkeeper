@@ -254,6 +254,11 @@ class TextualApp(App):
             self.render_error()
 
     def action_interrupt(self):
+        # Ctrl-C is a reflex in editors; unsaved text must not vanish with the app.
+        editors = [screen for screen in self.screen_stack if isinstance(screen, Editor)]
+        if editors and editors[-1].dirty:
+            editors[-1].show_message("unsaved changes: Ctrl-S saves, Esc discards")
+            return
         self.action_quit()
 
     def check_action(self, action, parameters):

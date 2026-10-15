@@ -173,9 +173,14 @@ class EditorTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press('x')
             self.assertTrue(screen.query_one(TextArea).text.startswith('x'))
 
-    async def test_ctrl_c_still_requests_quit(self):
+    async def test_ctrl_c_quits_a_clean_editor_and_warns_a_dirty_one(self):
         async with self.app.run_test(size=(80, 24)) as pilot:
-            await self.open(pilot)
+            editor = await self.open(pilot)
+            await pilot.press('x', 'ctrl+c')
+            self.app.worker.request_stop.assert_not_called()
+            self.assertEqual(editor.message, 'unsaved changes: Ctrl-S saves, Esc discards')
+            self.assertIs(self.app.screen, editor)
+            editor.query_one(TextArea).load_text(editor.initial_text)
             await pilot.press('ctrl+c')
             self.app.worker.request_stop.assert_called_once_with()
 

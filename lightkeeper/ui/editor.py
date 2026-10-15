@@ -49,7 +49,7 @@ class Editor(ModalScreen):
     def compose(self):
         with Vertical(id="editor-dialog"):
             yield Static(text(self.path.name), markup=False, id="editor-title")
-            # Tab moves focus in both formats: TOML needs no tab indentation either.
+            # Tab is not an indent key: neither Markdown nor TOML needs one here.
             yield TextArea(self.initial_text, soft_wrap=self.path.suffix == ".md",
                            tab_behavior="focus", show_line_numbers=False, id="editor-text")
             yield Static(text(), markup=False, id="editor-message")
@@ -77,6 +77,8 @@ class Editor(ModalScreen):
             self.dismiss(False)
 
     def completed(self, result, error):
+        if not self.is_mounted:
+            return
         self.busy = False
         self.query_one(TextArea).read_only = False
         message = error_text(error) if error else result
@@ -91,6 +93,7 @@ class Editor(ModalScreen):
         content = self.query_one(TextArea).text
         self.busy = True
         self.query_one(TextArea).read_only = True
+        self.show_message("saving")
         self.app.run_disk(lambda: save_text(self.path, content, self.original, self.validate,
                                           config_dir=self.config_dir), self.completed)
 

@@ -78,6 +78,8 @@ def edit_file(app, path, validate, *, config_dir=None) -> str | None:
                     result = subprocess.call([*editor, str(temporary)])
                 except Exception as exc:
                     # Leave suspend normally so Textual also resumes after launch failures.
+                    # Nobody edited the copy, so there is nothing to keep.
+                    temporary.unlink(missing_ok=True)
                     error = exc
             if error is not None:
                 raise error

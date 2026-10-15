@@ -228,6 +228,14 @@ class EditorTests(TestCase):
         self.app.suspend.assert_called_once()
         self.assertEqual(set(self.root.iterdir()), {self.live, self.editor, self.root / ".write-lock"})
 
+    def test_missing_editor_reports_without_keeping_a_copy(self):
+        with patch.dict(os.environ, {'VISUAL': '/does/not/exist', 'EDITOR': ''}):
+            error = edit_file(self.app, self.live, nonempty_utf8)
+        self.assertIn('editor unavailable', error)
+        self.assertNotIn('copy kept', error)
+        self.assertEqual(self.live.read_text(), 'original')
+        self.assertEqual([p.name for p in self.root.iterdir() if p.name.startswith('.rules')], [])
+
     def test_invalid_or_nonzero_keeps_original(self):
         for content, code in (('', 0), ('edited', 1)):
             with self.subTest(code=code):

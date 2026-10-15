@@ -150,11 +150,11 @@ The Runner reloads settings next tick and rechecks authority before every write.
 Agent is a compact read-only panel with the lightkeeper version (and `update X.Y.Z available: brew upgrade lightkeeper or pipx upgrade lightkeeper` when GitHub has a newer release), engine/model/effort/profile, auth status and fix command,
 actual/expected GitHub login, config/state directories, notifications and uptime.
 The menu's file entries, Agent's `e` / `r` / `T` and Repositories' `n` open a built-in plain-text editor.
-Markdown wraps; TOML scrolls horizontally. Tab moves focus; there are no line numbers or syntax colours.
+Markdown wraps; TOML scrolls horizontally. Tab does not indent; there are no line numbers or syntax colours.
 `Ctrl-S` validates and saves, then closes and wakes the Runner. Invalid text stays in the editor with an
 error message. `Esc` closes unchanged text immediately and asks before discarding unsaved changes.
 While the editor is open, `m`, `q`, `?` and `1`–`3` type text instead of navigating or quitting;
-Ctrl-C still quits the app. Missing repository notes open empty at `repos/<org>__<name>.md`.
+Ctrl-C quits the app only when nothing is unsaved. Missing repository notes open empty at `repos/<org>__<name>.md`.
 
 `Ctrl-E` opens the file in `$VISUAL`, then `$EDITOR`, then `vi` (arguments are supported).
 Unsaved text refuses this action with "save or close first". The external editor receives a private
