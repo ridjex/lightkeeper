@@ -4,7 +4,7 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-## 0.1.1 - 2026-10-15
+## [0.1.1] — 2026-10-15
 
 ### Fixed
 
