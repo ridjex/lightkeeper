@@ -81,9 +81,10 @@ logged in, or `ANTHROPIC_API_KEY` set. macOS and Linux.
    you quit (`q` on the screen, `Ctrl-C` in plain mode):
 
    ```sh
-   lightkeeper                    # the terminal screen
-   lightkeeper --plain            # the same loop as log lines, for a tmux window or a service
-   brew services start lightkeeper   # Homebrew: run --plain in the background under launchd or systemd
+   lightkeeper                        # the terminal screen
+   lightkeeper --plain                # the same loop as log lines, for a tmux window
+   brew services start lightkeeper    # Homebrew: --plain in the background under launchd or systemd
+   brew services stop lightkeeper     # ... and stop it again (also before upgrading)
    ```
 
    It is still dry-run: every repository starts with `post = "dry-run"`, so nothing reaches GitHub. When you
@@ -91,8 +92,7 @@ logged in, or `ANTHROPIC_API_KEY` set. macOS and Linux.
    Repositories screen) and restart.
 
    The Homebrew service writes its log to `$(brew --prefix)/var/log/lightkeeper.log`; `lightkeeper --status`
-   and the state folder work the same whichever way it runs. Stop it with `brew services stop lightkeeper`
-   before upgrading.
+   and the state folder work the same whichever way it runs.
 
 Updating: stop the running instance, then `brew upgrade lightkeeper` or `pipx upgrade lightkeeper`,
 and start it again. Configuration, journal and sessions are never touched by an update.
