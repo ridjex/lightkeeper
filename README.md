@@ -319,7 +319,8 @@ watched pull requests and deployment gates, and recent verdicts. One cursor walk
 History; `Enter` opens a pull request's detail with its status, assessment, posted body, description and
 timeline; `2` and `3` open the Repositories and Agent screens, where repositories, settings, rules and
 templates are edited without leaving the terminal. `m` opens the menu with every screen, action and
-setting, including the screen settings form; `?` shows the keys. A lighthouse scene sits above the
+setting, including the screen settings form; `?` shows the keys. Rules, template, settings and repository
+notes open in a built-in editor; `Ctrl-E` opens `$EDITOR`. A lighthouse scene sits above the
 Watching table by default (`[screen] idle = "quiet"` shows it only while nothing is watched). Everything about the screen,
 the keys, the PR detail, the editors and the idle scene is in [docs/screen.md](docs/screen.md).
 

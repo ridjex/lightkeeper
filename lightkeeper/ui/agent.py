@@ -10,7 +10,8 @@ from textual.widgets import Input, Static
 from .. import __version__
 from ..updates import UPGRADE
 from ..settings import validate_settings_file, validate_template
-from .editing import edit_file, nonempty_utf8
+from .editing import nonempty_utf8
+from .editor import open_editor
 from .repos import SettingsCache, error_text
 from .rich_view import age, footer_text, header_lines, multiline as text
 
@@ -130,4 +131,4 @@ class AgentPanel(Screen):
             if self.is_mounted:
                 self.message = message or "saved; the Runner re-checks before each write"
                 self.refresh_panel()
-        app.run_disk(lambda: edit_file(app, root / name, validate, config_dir=root), edited)
+        open_editor(app, root / name, validate, edited, config_dir=root)

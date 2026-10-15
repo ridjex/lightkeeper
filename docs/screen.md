@@ -91,7 +91,9 @@ Everything remains a two-dimensional big-pixel picture made from literal Rich Te
 | `L` | Open the state/logs folder |
 | `Space`, `Enter`, `a`, `n` (Repositories) | Pause/resume; edit; add; edit repository notes |
 | `t`, `c` (Agent) | Probe engine; copy its auth fix command |
-| `e`, `r`, `T` (Agent) | Edit settings, rules, template |
+| `e`, `r`, `T` (Agent) | Open settings, rules, template in the built-in editor |
+| `Ctrl-S`, `Esc` (editor) | Validate and save; close (confirm discarding unsaved changes) |
+| `Ctrl-E` (editor) | Open a clean buffer in `$VISUAL` / `$EDITOR` / `vi` |
 
 PR detail scrolls through clearly labelled Status, Assessment, Posted, Description and Timeline sections.
 A bold PR title sits above known author/head/base metadata; draft and push age appear only when applicable
@@ -146,14 +148,22 @@ keeps journal history. Remarks and notes saves report the number of watching ite
 The Runner reloads settings next tick and rechecks authority before every write.
 
 Agent is a compact read-only panel with the lightkeeper version (and `update X.Y.Z available: brew upgrade lightkeeper or pipx upgrade lightkeeper` when GitHub has a newer release), engine/model/effort/profile, auth status and fix command,
-actual/expected GitHub login, config/state directories, notifications and uptime. Its edit keys use
-`$VISUAL`, then `$EDITOR`, then `vi` (editor arguments are supported). The editor receives a private
-temporary copy, never the live file. The Runner continues while the terminal is suspended. Exit 0 must
-pass validation: settings load, rules/notes are non-empty UTF-8, template placeholders pass the renderer.
-Only then is the copy atomically installed with mode 0600. Failure or a concurrent file edit
-keeps the original and a private rejected copy (0600), whose path appears in the error. Missing
-repository notes start from an empty copy at
-`repos/<org>__<name>.md`; a successful edit creates the file with mode 0600.
+actual/expected GitHub login, config/state directories, notifications and uptime.
+The menu's file entries, Agent's `e` / `r` / `T` and Repositories' `n` open a built-in plain-text editor.
+Markdown wraps; TOML scrolls horizontally. Tab moves focus; there are no line numbers or syntax colours.
+`Ctrl-S` validates and saves, then closes and wakes the Runner. Invalid text stays in the editor with an
+error message. `Esc` closes unchanged text immediately and asks before discarding unsaved changes.
+While the editor is open, `m`, `q`, `?` and `1`–`3` type text instead of navigating or quitting;
+Ctrl-C still quits the app. Missing repository notes open empty at `repos/<org>__<name>.md`.
+
+`Ctrl-E` opens the file in `$VISUAL`, then `$EDITOR`, then `vi` (arguments are supported).
+Unsaved text refuses this action with "save or close first". The external editor receives a private
+temporary copy, never the live file. Only the Textual main loop blocks while the terminal is suspended;
+the Runner continues. Textual redraws the screen after the editor exits. Exit 0 must pass validation.
+Both editors require valid settings, non-empty UTF-8 rules/notes, and valid template placeholders.
+Only then is the copy atomically installed with mode 0600. A concurrent disk edit is refused with
+"file changed on disk; reopen the editor". External-editor failure keeps the original and a private
+rejected copy (0600), whose path appears in the error; built-in failures keep the buffer on screen.
 
 Form saves reject stale settings, validate a private candidate and atomically replace `settings.toml`
 with mode 0600. Each save patches one repository, one agent/comment field, or the `[screen]` table through the settings API.
@@ -169,14 +179,16 @@ this lock and is not protected: last-writer-wins.
 Screen reads have no filesystem side effects. Permissions (0600 files, 0700 directories) are enforced
 at migration, startup and app writes. Panels cache settings by digest and mtime, without reloading
 notes on each poll. Disk reads, serialization, validation, fsync and replacement use one serialized
-worker queue; completion and errors return to the footer. Pending repository checks are shared and
-forms stop waiting after 30 seconds with `check result lost; retry`. `?` opens help on every screen.
+worker queue; the external process alone hops to the main thread for suspension. Completion and errors
+return to the footer or editor message line. Pending repository checks are shared and
+forms stop waiting after 30 seconds with `check result lost; retry`. `?` opens help outside the editor.
 
 PR detail shows the latest body and its outcome, the last 20 journal events for that revision, and a private
 reason labelled "private, journal only". Session files load in a worker and tolerate missing files; session
 paths must resolve under the state directory. All text is literal and all action keys stop while an Input
-has focus. Re-review clears only the contextual settlement and cached assessment; approvals, unknown writes,
-closed PRs, active reviews, dismissals and owner takeovers are protected. The Runner rechecks the confirmed
+has focus; editor text also takes precedence over app navigation. Re-review clears only the contextual
+settlement and cached assessment; approvals, unknown writes, closed PRs, active reviews, dismissals and
+owner takeovers are protected. The Runner rechecks the confirmed
 head. An existing automated action on that head reports "already" without posting twice.
 
 Expanded alerts show cause, scope, age, last attempt/result and their named check. Engine probes preserve

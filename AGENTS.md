@@ -38,6 +38,8 @@ These are the rules that are easy to break without noticing.
 
 ## The screen and the idle picture
 
+- `App.suspend` must run on the main thread (editor sessions go through `edit_file`);
+  one-row checkboxes need the focus border suppressed.
 - Textual is the only live screen; `--plain` is the fallback and must keep working.
 - The idle picture (`lightkeeper/ui/idle.py`) is a deterministic function of time, width and settings: no
   randomness, no mutable state between frames; events come from a hash of the time slot. Keep it a

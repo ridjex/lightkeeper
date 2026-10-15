@@ -10,7 +10,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, Checkbox, DataTable, Input, Select, Static
 
 from ..settings import ACTIONS, RepoSettings, SettingsError, load_settings, save_settings, settings_digest
-from .editing import edit_file, nonempty_utf8
+from .editing import nonempty_utf8
 from .rich_view import footer_text, header_lines, multiline as text
 
 SAVED = "saved; the Runner re-checks before each write"
@@ -201,6 +201,7 @@ class Repositories(Screen):
         self.open_form()
 
     def action_notes(self):
+        from .editor import open_editor
         name = self.selected
         if name:
             app, config = self.app, self.config
@@ -212,11 +213,16 @@ class Repositories(Screen):
                 if self.is_mounted:
                     self.message = message or f"{SAVED}; re-evaluates {open_count(app, name)} open items"
                     self.refresh_panel()
-            app.run_disk(lambda: edit_file(app, path, nonempty_utf8, config_dir=config), edited)
+            open_editor(app, path, nonempty_utf8, edited, config_dir=config)
 
 
 class RepoCheckbox(Checkbox):
     """Explicit marks stay readable in dark, monochrome and ASCII terminals."""
+    DEFAULT_CSS = """
+    RepoCheckbox:focus { border: none; height: 1; }
+    RepoCheckbox:focus > .toggle--label { text-style: underline; }
+    """
+
     def render(self):
         return Content.assemble(
             ("[X]" if self.value else "[ ]", self.get_visual_style("toggle--button")),

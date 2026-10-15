@@ -51,3 +51,6 @@ belongs in its commit and pull request.
   notifications are overwritten by later events; deployment requests are their own threads.
 - 2026-09-17 · **Universal, not smart.** The code owns eligibility and writes; a model decides every request by
   a human-written rules file. No path globs, author lists or size ladders.
+
+- 2026-10-15 · **The built-in editor is the default** so editing configuration needs no terminal-editor knowledge; Ctrl-E keeps the external editor available.
+- 2026-10-15 · **App.suspend runs only on the main thread** so Textual cannot render over the external editor while the Runner continues independently.

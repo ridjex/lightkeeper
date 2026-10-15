@@ -4,6 +4,18 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## 0.1.1 - 2026-10-15
+
+### Fixed
+
+- Focused one-row checkboxes no longer collapse into a dark block.
+- Launching an external editor from a worker thread no longer corrupts the terminal.
+
+### Added
+
+- Built-in editor for settings, rules, templates and repository notes, with validated saving and
+  `Ctrl-E` access to `$EDITOR`.
+
 ## [0.1.0] — 2026-10-14
 
 First public release.

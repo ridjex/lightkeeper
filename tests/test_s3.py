@@ -4,6 +4,7 @@ from dataclasses import replace
 import hashlib
 import fcntl
 import os
+import queue
 from pathlib import Path
 import tempfile
 import threading
@@ -169,7 +170,8 @@ class SaveTests(TestCase):
                         errors.append(str(exc))
                 def other():
                     if editor_writer:
-                        app = Mock(suspend=Mock(side_effect=nullcontext))
+                        app = Mock(suspend=Mock(side_effect=nullcontext),
+                                   call_from_thread=Mock(side_effect=lambda fn: fn()))
                         error = edit_file(app, self.file, lambda path: validate(path, self.root))
                         (errors if error else successes).append(error or 'editor')
                     else:
@@ -283,6 +285,40 @@ class EditorTests(TestCase):
             entered.set()
             thread.join(2)
         self.assertFalse(thread.is_alive())
+
+    def test_worker_editor_launch_hops_to_main_thread(self):
+        calls = queue.Queue()
+        completed = threading.Event()
+        outcome = []
+        main = threading.get_ident()
+
+        def hop(callback):
+            self.assertNotEqual(threading.get_ident(), main)
+            calls.put(callback)
+            if not completed.wait(3):
+                raise RuntimeError('main-thread callback timed out')
+            return 0
+
+        def editor(args):
+            self.assertEqual(threading.get_ident(), main)
+            Path(args[-1]).write_text('updated', encoding='utf-8')
+            return 0
+
+        self.app.call_from_thread.side_effect = hop
+        self.app.suspend.side_effect = lambda: (
+            self.assertEqual(threading.get_ident(), main) or nullcontext())
+        with patch('lightkeeper.ui.editing.subprocess.call', editor):
+            worker = threading.Thread(target=lambda: outcome.append(edit_file(self.app, self.live, nonempty_utf8)))
+            worker.start()
+            try:
+                calls.get(timeout=3)()
+            finally:
+                completed.set()
+                worker.join(3)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(outcome, [None])
+        self.app.call_from_thread.assert_called_once()
+        self.assertEqual(self.live.read_text(encoding='utf-8'), 'updated')
 
     def test_explicit_config_named_repos_uses_same_lock_as_form_saves(self):
         config = self.root / 'repos'
@@ -507,10 +543,13 @@ class ScreenTests(IsolatedAsyncioTestCase):
             self.assertEqual(self.commands()[0].kind, 'probe_engine')
             self.app.copy_command.assert_called_once_with('claude auth login')
             self.app.folder_opener.assert_called_once_with(str(self.root / 'state'))
-            with patch('lightkeeper.ui.agent.edit_file', return_value=None) as edit:
-                for key, file in [('e', 'settings.toml'), ('r', 'rules.md'), ('T', 'template.md')]:
-                    await pilot.press(key)
-                    self.assertEqual(edit.call_args.args[1], self.root / file)
+            from lightkeeper.ui.editor import Editor
+            for key, file in [('e', 'settings.toml'), ('r', 'rules.md'), ('T', 'template.md')]:
+                await pilot.press(key)
+                await pilot.pause()
+                self.assertIsInstance(self.app.screen, Editor)
+                self.assertEqual(self.app.screen.path, self.root / file)
+                await pilot.press('escape')
             field = Input()
             await screen.mount(field)
             field.focus()
@@ -521,10 +560,19 @@ class ScreenTests(IsolatedAsyncioTestCase):
     async def test_notes_creates_empty_template_and_feedback(self):
         async with self.app.run_test(size=(130, 45)) as pilot:
             await self.open_repos(pilot)
-            with patch('lightkeeper.ui.repos.edit_file', return_value=None) as edit:
-                await pilot.press('n')
-            self.assertEqual(edit.call_args.args[1], self.root / 'repos/example__widget.md')
-            self.assertIs(edit.call_args.args[2], nonempty_utf8)
+            from textual.widgets import TextArea
+            from lightkeeper.ui.editor import Editor
+            await pilot.press('n')
+            await pilot.pause()
+            editor = self.app.screen
+            self.assertIsInstance(editor, Editor)
+            self.assertEqual(editor.path, self.root / 'repos/example__widget.md')
+            self.assertIs(editor.validate, nonempty_utf8)
+            self.assertEqual(editor.query_one(TextArea).text, '')
+            await pilot.press('n', 'o', 't', 'e', 's', 'ctrl+s')
+            await pilot.pause()
+            self.assertEqual(editor.path.read_text(encoding='utf-8'), 'notes')
+            self.assertEqual(editor.path.stat().st_mode & 0o777, 0o600)
             self.assertIn('re-evaluates', contents(self.app))
             self.assertEqual(self.commands()[-1].kind, 'wake')
 
@@ -720,18 +768,22 @@ class ScreenTests(IsolatedAsyncioTestCase):
             with patch.object(self.app, 'suspend', side_effect=SuspendNotSupported('no terminal')):
                 await pilot.press('r')
                 await pilot.pause()
+                await pilot.press('ctrl+e')
+                await pilot.pause()
                 self.assertIn('editor unavailable: no terminal', contents(self.app))
                 self.assertFalse(self.runner.cancelled)
-                await pilot.press('t')
+                await pilot.press('escape', 't')
                 self.assertEqual(self.commands()[-1].kind, 'probe_engine')
             with patch.object(self.app, 'suspend', side_effect=nullcontext), \
                  patch('lightkeeper.ui.editing.subprocess.call', return_value=0), \
                  patch('lightkeeper.ui.agent.nonempty_utf8', side_effect=LookupError('validator failed')):
                 await pilot.press('r')
                 await pilot.pause()
+                await pilot.press('ctrl+e')
+                await pilot.pause()
                 self.assertIn('editor unavailable: validator failed', contents(self.app))
                 self.assertFalse(self.runner.cancelled)
-                await pilot.press('1')
+                await pilot.press('escape', '1')
                 self.assertIs(self.app.screen, self.app.overview)
 
 

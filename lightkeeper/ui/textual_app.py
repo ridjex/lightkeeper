@@ -24,6 +24,7 @@ from .project import label
 from .platform import clipboard as system_clipboard, open_folder
 from .detail import ConfirmOwnerApprove, PRDetail
 from .agent import AgentPanel
+from .editor import Editor
 from .repos import Repositories, RepoForm, read_settings, error_text
 from .menu import Menu, ScreenForm
 from .rich_view import age, countdown, glyph, header_lines, footer_text, idle_panel, multiline, print_summary, row_data, text
@@ -61,7 +62,8 @@ class TextualApp(App):
         Binding("r", "wake", "Check now", priority=True),
         Binding("t", "alert_action", "Retry alert", priority=True),
         Binding("c", "copy_fix", "Copy fix", priority=True),
-        Binding("q,ctrl+c", "quit", "Quit", priority=True),
+        Binding("q", "quit", "Quit", priority=True),
+        Binding("ctrl+c", "interrupt", "Quit", priority=True),
         Binding("question_mark", "help", "Help", priority=True),
         Binding("1", "screen(1)", "Overview", priority=True),
         Binding("2", "screen(2)", "Repositories", priority=True),
@@ -251,7 +253,15 @@ class TextualApp(App):
         except Exception:
             self.render_error()
 
+    def action_interrupt(self):
+        self.action_quit()
+
     def check_action(self, action, parameters):
+        if any(isinstance(screen, Editor) for screen in self.screen_stack):
+            # Text (including q and ?) belongs to the editor; Ctrl-C still quits.
+            return action == "interrupt"
+        if action == "interrupt":
+            action = "quit"
         if action == "help":
             return True
         if action == "menu":

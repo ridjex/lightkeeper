@@ -13,6 +13,7 @@ if any(importlib.util.find_spec(name) is None for name in ('rich', 'textual')):
 
 from textual.widgets import Static
 
+from lightkeeper import __version__
 from lightkeeper.commands import CommandInbox
 from lightkeeper.ui.model import Runtime
 from lightkeeper.ui.project import Observer, Projection
@@ -42,10 +43,10 @@ class MenuTests(IsolatedAsyncioTestCase):
             self.assertTrue(header.get_style_at_offset(app.console, header.plain.index('update')).dim)
             self.assertGreater(header.plain.index('update'), header.plain.index('claude'))
             await pilot.press('3')
-            self.assertIn('lightkeeper 0.1.0 · update 0.2.0 available: brew upgrade lightkeeper or pipx upgrade lightkeeper', contents(app))
+            self.assertIn(f'lightkeeper {__version__} · update 0.2.0 available: brew upgrade lightkeeper or pipx upgrade lightkeeper', contents(app))
             app.observer('policy', updates=False)
             app.refresh_snapshot()
-            self.assertIn('lightkeeper 0.1.0', contents(app))
+            self.assertIn(f'lightkeeper {__version__}', contents(app))
             self.assertNotIn('update 0.2.0', contents(app))
 
     async def choose(self, app, pilot, key):
