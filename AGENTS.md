@@ -23,9 +23,8 @@ These are the rules that are easy to break without noticing.
 - **Secrets and raw text never travel as command-line arguments.** Prompts go through stdin; the model runs
   in an empty temporary directory with a scrubbed environment.
 - **Every boundary is UTF-8** regardless of locale: subprocess pipes, persisted files, log streams.
-- **Configuration and state directories are private** (0700/0600); apart from opt-in `screen.log` diagnostics,
-  they are never written by the screen; the Runner owns writes and holds the locks. Settings saves patch
-  one table atomically.
+- **Configuration and state directories are private** (0700/0600) and are never written by the screen; the
+  Runner owns writes and holds the locks. Settings saves patch one table atomically.
 
 ## Style
 
@@ -47,7 +46,8 @@ These are the rules that are easy to break without noticing.
   big-pixel half-block raster made from literal Rich Text; the frame budget is 4 ms at 200 columns
   (`LIGHTKEEPER_BENCH=1` runs the budget test). Judge changes in `lightkeeper --preview-idle`, not in screenshots.
 - Depth order is distance: stars, sun or moon, clouds, the beam, events on the water, rock and tower.
-- Frames are paced by timer lateness: a late frame is skipped, never delayed; scene time and tempo stay unchanged.
+- Frames are paced by the terminal: while Textual's writer queue still holds the previous frame (or, without a
+  writer thread, when the timer runs late) the frame is skipped, never delayed; scene time and tempo stay unchanged.
 - The kitty keyboard protocol stays disabled (`TEXTUAL_DISABLE_KITTY_KEY=1` in `__main__`): some terminals
   keep it on after exit. Every binding has a plain encoding; do not add bindings that need it.
 - The screen was built on a dark background with a font that has half-block glyphs; `NO_COLOR` and

@@ -14,7 +14,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 ### Added
 
 - Effective screen rate and skipped-frame count on the Agent screen and expanded Overview help.
-- Opt-in `LIGHTKEEPER_SCREEN_TRACE=1` five-second timing and frame diagnostics in private `screen.log`.
+- Opt-in `LIGHTKEEPER_SCREEN_TRACE=1` five-second `screen-trace` JSON lines in `run.log`: frames, skips, timer
+  lateness, writer backlog and callback durations.
 
 ## [0.1.5] — 2026-10-15
 

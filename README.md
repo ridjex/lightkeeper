@@ -339,10 +339,10 @@ the keys, the PR detail, the editors and the idle scene is in [docs/screen.md](d
 
 ## Troubleshooting
 
-- The screen feels slow or lags behind the keys (remote sessions, a busy terminal): the picture slows
-  itself down; the Agent screen (`3`) shows the effective rate and skipped frames. `[screen] idle = "quiet"`
-  or the Screen settings form can reduce output further. `LIGHTKEEPER_SCREEN_TRACE=1` writes five-second
-  diagnostics to `screen.log` in the state directory.
+- The screen feels slow or lags behind the keys (remote sessions, a busy terminal): the picture skips
+  frames while the terminal is behind; the Agent screen (`3`) shows the effective rate and skipped frames.
+  `[screen] idle = "quiet"` removes the picture once something is watched. `LIGHTKEEPER_SCREEN_TRACE=1`
+  adds a `screen-trace` JSON line to `run.log` every five seconds (`grep screen-trace run.log`).
 - `gh ? <login> (unconfirmed)` means the last known login could not be verified; writes wait, and an error alert appears after three failed checks in a row.
 - `gh ✗ <actual>` in the header: `gh auth status` shows another account than `[identity] login`; writes are
   deferred until it matches.

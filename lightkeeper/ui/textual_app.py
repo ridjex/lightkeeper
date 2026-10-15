@@ -95,6 +95,7 @@ class TextualApp(App):
         self._idle_blurred = False
         self._idle_on_time = 0
         self._idle_skipped = 0
+        self._idle_rearmed = False
         self._idle_interval = self.IDLE_INTERVALS[0]
         self._idle_due = self.mono() + self._idle_interval
         self._screen_trace = ScreenTrace() if os.environ.get("LIGHTKEEPER_SCREEN_TRACE") == "1" else None
@@ -245,6 +246,7 @@ class TextualApp(App):
             return
         self._idle_interval = interval
         self._idle_due = self.mono() + interval
+        self._idle_rearmed = True    # a new timer's grid starts when its task first runs
         if not self.is_running:
             return
         if hasattr(self, "_idle_timer"):
@@ -266,29 +268,45 @@ class TextualApp(App):
         if self._idle_step:
             result += ", terminal behind"
         if self._idle_skipped:
-            result += f" ({self._idle_skipped} frames skipped)"
+            result += f" ({self._idle_skipped} frame{'s' if self._idle_skipped != 1 else ''} skipped)"
         if self._idle_blurred:
             result += " · unfocused"
         return result
 
     def write_screen_trace(self):
         if self._screen_trace is not None:
-            self._screen_trace.write(self.snapshot.runtime.state_dir, self._idle_interval, self.size)
+            self._screen_trace.write(self._idle_interval, self.size)
+
+    def writer_backlog(self):
+        """Terminal writes still queued by Textual's writer thread; None without one (headless, tests)."""
+        queue = getattr(getattr(self._driver, "_writer_thread", None), "_queue", None)
+        return queue.qsize() if queue is not None else None
 
     def animate_idle(self):
         started = self.mono()
         try:
             if not self._idle_visible:
                 return
+            if self._idle_rearmed:
+                self._idle_rearmed = False
+                self._idle_due = started
             late = started - self._idle_due
-            if self._screen_trace is not None:
-                self._screen_trace.max_lateness = max(self._screen_trace.max_lateness, late)
-            if late > self._idle_interval:
+            backlog = self.writer_backlog()
+            trace = self._screen_trace
+            if trace is not None:
+                trace.max_lateness = max(trace.max_lateness, late)
+                trace.backlog = max(trace.backlog, backlog or 0)
+            # A frame is three queued writes (sync start, frame, sync end): a deeper backlog means the previous
+            # frame has not reached the terminal yet. A timer a whole interval late means the loop itself is
+            # being held up (a blocked write, a swapping machine); either way this frame is not drawn.
+            behind = (backlog or 0) > 3 or late > self._idle_interval
+            if behind:
                 self._idle_skipped += 1
-                if self._screen_trace is not None:
-                    self._screen_trace.skipped += 1
+                if trace is not None:
+                    trace.skipped += 1
                 self._idle_on_time = 0
-                self._idle_step = min(self._idle_step + 1, len(self.IDLE_INTERVALS) - 1)
+                if not self._idle_blurred:    # the blurred rate is capped anyway; do not bill the step later
+                    self._idle_step = min(self._idle_step + 1, len(self.IDLE_INTERVALS) - 1)
                 # Re-arm even at the slowest rate: never catch up with a burst of old frames.
                 self.idle_rate(1 if self._idle_blurred else self.IDLE_INTERVALS[self._idle_step], reset=True)
                 return

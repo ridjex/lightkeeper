@@ -21,15 +21,17 @@ rows; it hides if its slot would leave no room for a History row. The Watching m
 if alerts and the fixed blocks together exceed the terminal height, Overview scrolls to keep History
 reachable.
 Tempo defaults to 0.8; the local-hour palette and sun/moon position, moon and rare events are on.
-The scene starts at 10 fps while visible. A timer more than one frame interval late skips that frame
-and steps down through 5, 2 and 1 fps; 30 consecutive on-time frames recover one step. Losing focus
-caps it at 1 fps; focus restores the adaptive rate. It pauses whenever neither slot is visible, including
+The scene starts at 10 fps while visible. A frame is skipped while Textual's writer queue still holds the
+previous one (the terminal is behind; without a writer thread, a timer more than one interval late counts
+the same), and the rate steps down through 5, 2 and 1 fps; 30 consecutive on-time frames recover one step.
+Losing focus caps it at 1 fps without changing the step; focus restores the adaptive rate. It pauses whenever neither slot is visible, including
 behind other screens. Fewer frames show the same scene at the same time; tempo still scales only scene clocks.
 The Agent screen (`3`) shows `Screen: 10 fps`, or the reduced rate, `terminal behind` and the total
 frames skipped; expanded Overview help (`?`) shows it too.
-Set `LIGHTKEEPER_SCREEN_TRACE=1` to append a JSON line every five seconds to `screen.log` in the state
-directory (0600). Each window records UTC time, interval, rendered/skipped frames, maximum timer lateness,
-call counts and maximum/mean durations of snapshot refresh and animation, and terminal width/height.
+Set `LIGHTKEEPER_SCREEN_TRACE=1` to log a `screen-trace` JSON line to `run.log` every five seconds. Each
+window records UTC time, interval, rendered/skipped frames, maximum timer lateness, the deepest writer
+backlog, call counts and maximum durations of snapshot refresh and animation, and terminal width/height.
+High lateness or backlog with low durations means the terminal is behind; high durations mean the app is.
 Intervals, lateness and durations are in seconds. Empty or unwritable state directories are silently skipped.
 ASCII/non-UTF-8
 and NO_COLOR terminals get a monochrome version of the same picture. The lighthouse watches rolling
