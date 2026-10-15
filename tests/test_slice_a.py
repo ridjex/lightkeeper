@@ -122,7 +122,7 @@ class IdentityTests(unittest.TestCase):
                         self.assertNotIn("gh_identity", alerts)
                         self.assertEqual(observer.runtime.gh_login, "me")
                         self.assertFalse(observer.runtime.gh_confirmed)
-                        log.assert_any_call(f"gh unreachable, retrying next tick: {actual}")
+                        log.assert_any_call(f"gh unreachable, writes wait: {actual}")
                     gh.login = Mock(return_value="me")
                     runner.reviewer = FakeReviewer([Decision("approve", "ok", "ai")])
                     self.assertEqual(runner.tick(), {"applied": 1})

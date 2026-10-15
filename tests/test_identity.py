@@ -59,7 +59,7 @@ class IdentityRetryTests(unittest.TestCase):
         self.assertEqual(self.observer.runtime.gh_login, "me")
         self.assertFalse(self.observer.runtime.gh_confirmed)
         self.assertFalse(self.observer.snapshot.alerts)
-        self.log.assert_called_once_with(f"gh unreachable, retrying next tick: {self.error}")
+        self.log.assert_called_once_with(f"gh unreachable, writes wait: {self.error}")
         self.tick.assert_not_called()
         self.fail_tick()
         self.assertFalse(self.observer.snapshot.alerts)
@@ -107,13 +107,40 @@ class IdentityRetryTests(unittest.TestCase):
         self.assertEqual(self.gh.login.call_count, 4)
         self.assertEqual(self.observer.snapshot.alerts[0].text, "gh login is other, expected me")
 
-    def test_rate_limit_is_named_in_log_reason_and_alert(self):
+    def test_rate_limit_stops_retrying_and_is_named_in_log_reason_and_alert(self):
         self.error = GhError(["api", "user"], 1, "HTTP 403: secondary rate limit")
         for _ in range(3):
             self.fail_tick()
-        self.log.assert_called_once_with(f"gh unreachable, retrying next tick: GitHub rate limited: {self.error}")
+        self.assertEqual(self.gh.login.call_count, 3)      # one attempt per check: GitHub asked for a pause
+        self.sleep.assert_not_called()
+        self.assertTrue(self.runner._rate_limited)
+        self.log.assert_called_once_with(f"gh unreachable, writes wait: GitHub rate limited: {self.error}")
         self.assertIn("GitHub rate limited", self.runner._identity_reason)
         self.assertIn("GitHub rate limited", self.observer.snapshot.alerts[0].text)
+
+    def test_transient_failure_keeps_a_confirmed_mismatch_alert(self):
+        self.gh.login.return_value = "other"
+        self.runner.tick()
+        self.fail_tick()
+        alert, = self.observer.snapshot.alerts
+        self.assertEqual((alert.level, alert.text), ("error", "gh login is other, expected me"))
+        self.assertEqual(self.observer.runtime.gh_login, "other")
+        self.assertFalse(self.observer.runtime.gh_confirmed)
+        self.gh.login.side_effect = None
+        self.gh.login.return_value = "me"
+        self.runner.tick()
+        self.assertFalse(self.observer.snapshot.alerts)
+
+    def test_mismatch_after_a_streak_replaces_the_alert_text(self):
+        for _ in range(3):
+            self.fail_tick()
+        self.assertIn("lookup failed", self.observer.snapshot.alerts[0].text)
+        self.gh.login.side_effect = None
+        self.gh.login.return_value = "other"
+        self.runner.tick()
+        alert, = self.observer.snapshot.alerts
+        self.assertEqual(alert.text, "gh login is other, expected me")
+        self.assertEqual(self.runner._identity_failures, 0)
 
     @unittest.skipUnless(importlib.util.find_spec("rich"), "Rich is optional")
     def test_header_distinguishes_unconfirmed_alert_and_mismatch_without_color(self):

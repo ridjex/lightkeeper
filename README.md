@@ -154,8 +154,8 @@ workflow, every job and the logs before the gate; the model answers `approve | i
   kept, and the same input is not retried.
 - `dry-run` mode does everything except the final write, and prefixes notifications with `[dry-run]`.
 - The `gh` login is checked every tick and immediately before each review or deployment approval.
-  Failed lookups retry twice with short pauses and defer writes if all attempts fail; three consecutive
-  failed checks raise an error alert. A mismatch stops and alerts immediately. A matching check clears
+  Failed lookups retry twice with short pauses (a rate-limited answer is not retried) and defer writes if all
+  attempts fail; three consecutive failed checks raise an error alert. A mismatch stops and alerts immediately. A matching check clears
   the alert; the header retains the last known login as unconfirmed during transient lookup failures.
 - Checks still running after 3 hours → one notification, no approval. A context too large to send → no
   approval, one notification.

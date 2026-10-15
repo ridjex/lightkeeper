@@ -438,34 +438,40 @@ class Runner:
     def _check_identity(self) -> str | None:
         """Check the account before a tick or POST; log once per failure streak."""
         self._identity_checked = False
-        confirmed = False
+        actual = error = None
         # Three 15-second attempts plus 1/3-second pauses fit within the minute between ticks.
         for delay in (0, 1, 3):
             if delay:
+                if self.cancelled:
+                    break
                 self.sleeper(delay)
             try:
                 actual = self.gh.login(timeout_s=15)
+                break
             except Exception as exc:  # malformed output and transport failures both block writes
-                error = f"GitHub rate limited: {exc}" if isinstance(exc, GhError) and exc.rate_limited else str(exc)
-                continue
-            confirmed = True
+                error = exc
+                if isinstance(exc, GhError) and exc.rate_limited:
+                    self._rate_limited = True    # GitHub asks for a pause, not a burst of retries
+                    break
+        if actual is not None:
             self._last_gh_login = actual
             self._identity_failures = 0
             reason = None if actual == self.settings.login else f"gh login is {actual}, expected {self.settings.login}"
             if reason and reason != self._identity_reason:
                 log(reason)
-            alert = reason
-            break
+            self.condition("gh_identity", reason)
         else:
             self._identity_failures += 1
-            reason = f"gh login lookup failed, expected {self.settings.login}: {error}"
+            detail = f"GitHub rate limited: {error}" if isinstance(error, GhError) and error.rate_limited else str(error)
+            reason = f"gh login lookup failed, expected {self.settings.login}: {detail}"
             if self._identity_failures == 1:
-                log(f"gh unreachable, retrying next tick: {error}")
-            alert = reason if self._identity_failures >= 3 else None
+                log(f"gh unreachable, writes wait: {detail}")
+            if self._identity_failures >= 3:
+                self.condition("gh_identity", reason)
+            # Below the streak the alert stays as it was: a confirmed mismatch must not fade into "unconfirmed".
         self._identity_reason = reason
         self._identity_checked = reason is None
-        self.observe("gh_identity", login=self._last_gh_login, confirmed=confirmed)
-        self.condition("gh_identity", alert)
+        self.observe("gh_identity", login=self._last_gh_login, confirmed=actual is not None)
         self.observe("alert_attempt", key="gh_identity", text=reason or "gh identity ok")
         return reason
 
