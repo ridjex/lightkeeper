@@ -114,8 +114,7 @@ class ProjectionTests(unittest.TestCase):
         row = observer.snapshot.watching[0]
         alert = observer.snapshot.alerts[0]
         self.assertEqual(alert, Alert(f'needs_you:{row.item.identity}', 'needs_you',
-                         'widget#1 needs you: inspect report.pdf'
-                         ' · Enter opens it, A approves as owner, o opens GitHub', row.since, row.item.repo))
+                         'widget#1 needs you: inspect report.pdf', row.needs_you_since, row.item.repo))
         self.assertEqual(observer.snapshot.alerts[1:], (system,))
         self.assertEqual(observer.runtime.alerts, (system,))
         observer.publish()
@@ -243,7 +242,7 @@ class RenderTests(unittest.TestCase):
             alert_line = next(part for part in render(screen, 100, 250, 40, ascii).renderables
                               if getattr(part, 'plain', '').startswith(' # widget' if ascii else ' ◆ widget'))
             self.assertEqual(alert_line.style, 'bold yellow')
-            self.assertIn('Enter opens it, A approves as owner, o opens GitHub', alert_line.plain)
+            self.assertNotIn('Enter opens it', alert_line.plain)   # plain output has no keys
 
     def test_github_identity_header(self):
         screen = fixture_screen()

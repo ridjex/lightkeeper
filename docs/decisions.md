@@ -3,7 +3,7 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
-- 2026-10-21 · **Needs-you is an alert, not a counter**, because the owner missed a counter for 2.5 hours.
+- 2026-10-21 · **Needs-you is an alert, not a counter.** An item waiting for a human is the one thing the screen exists to show; a small counter and a row mark were overlooked for hours, an alert line, a reverse badge and an amber beam are not.
 
 - 2026-10-15 · **Pace idle frames by timer lateness instead of a fixed lower rate** so fast terminals keep smooth motion while busy terminals skip frames and recover gradually; scene clocks never slow down.
 - 2026-10-15 · **Identity lookup failures retry and alert only after three failed checks** to avoid transient network noise while still blocking writes; a confirmed account mismatch stops and alerts at once.

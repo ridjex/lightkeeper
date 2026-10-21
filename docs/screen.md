@@ -23,7 +23,7 @@ reachable.
 
 Needs-you items appear first in Alerts as bold amber `◆` lines. The header badge `◆ N needs you` uses
 bold reverse video when nonzero, Watching and PR detail show `needs you`, and the nighttime lighthouse
-beam turns amber. `Enter` on an alert opens PR detail; `o` opens GitHub from either place, and `A` in
+beam turns amber (not in ASCII or NO_COLOR modes, where the badge carries the information). `Enter` on an alert opens PR detail; `o` opens GitHub from either place, and `A` in
 detail opens owner approval with confirmation. Inspect the change before approving. Alerts clear when
 the item no longer needs you; History keeps the actual verdict. ASCII uses `#`; `NO_COLOR` retains
 the badge's reverse-video emphasis.

@@ -461,8 +461,17 @@ class TextualApp(App):
             self._idle_layout = layout
             self._idle_compact_key = compact_key
 
+    def needs_you_hint(self, alert, screen):
+        """What the keys do for this item: a gate has a run page but no PR detail and no owner approval."""
+        row = next((r for r in screen.watching if f"needs_you:{r.item.identity}" == alert.key), None)
+        if row is not None and row.item.kind != "pr":
+            return "Enter opens its run · o opens GitHub"
+        return "Enter opens it · A approves as owner in detail · o opens GitHub"
+
     def alert_text(self, alert, screen, now):
         message = alert.text
+        if alert.level == "needs_you":
+            message += " · " + self.needs_you_hint(alert, screen)
         if alert.key == "reviewer_paused" and screen.runtime.reviewer_paused_until:
             message += f"; resumes in {countdown(screen.runtime.reviewer_paused_until - now)}"
         if alert.key in self.expanded_alerts:
@@ -475,7 +484,7 @@ class TextualApp(App):
                 since = screen.wall_now - alert.since
                 if screen.mono_at is not None:
                     since += max(0, now - screen.mono_at)
-                scope, hint = alert.repo, "Enter opens it · A approves as owner in detail · o opens GitHub"
+                scope, hint = alert.repo, self.needs_you_hint(alert, screen)
             message += (f"\n  cause: {alert.text}\n  scope: {scope} · since {age(since)} ago"
                         f"\n  last attempt and result: {last}\n  action: {hint}")
             fix = self.fix_command(alert)

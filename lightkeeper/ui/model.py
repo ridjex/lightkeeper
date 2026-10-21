@@ -85,6 +85,7 @@ class ItemRow:
     why: str
     since: float
     needs_you: str | None = None
+    needs_you_since: float = 0   # when the notify arrived; the state's `since` may be hours older
     dry_run: bool = False
     repo_dry: bool = False
     findings: tuple = ()

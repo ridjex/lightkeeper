@@ -74,7 +74,7 @@ class Projection:
             message = rec.get("text") or rec.get("reason") or ""
             for prefix in (f"{item.repo}#{item.number}: ", f"{item.repo.rsplit('/', 1)[-1]}#{item.number}: "):
                 message = message.removeprefix(prefix)       # the row already names the item
-            row = replace(row, needs_you=message)
+            row = replace(row, needs_you=message, needs_you_since=at)
         state = ACTIONS.get(rec.get("action", "approve")) if event == "applied" else STATES.get(event)
         dry = event.startswith("would_")
         if dry:
@@ -193,10 +193,10 @@ class Projection:
             return tuple(sorted(Counter(action for revision, action in self._counts.get((day, dry), ())
                                         if revision[1] in runtime.repos).items()))
         history = tuple(h for h in reversed(self._history) if h.item.repo in runtime.repos)
+        # Key hints belong to the screen that has the keys (textual_app.alert_text), not to plain output.
         alerts = tuple(Alert(f"needs_you:{r.item.identity}", "needs_you",
-                             f"{label(r.item, runtime.repos)} needs you: {r.needs_you}"
-                             " · Enter opens it, A approves as owner, o opens GitHub",
-                             r.since, r.item.repo) for r in rows if r.needs_you) + runtime.alerts
+                             f"{label(r.item, runtime.repos)} needs you: {r.needs_you}",
+                             r.needs_you_since or r.since, r.item.repo) for r in rows if r.needs_you) + runtime.alerts
         return Screen(runtime, tuple(rows), history, alerts, Stats(counts(False), counts(True)),
                       wall_now, self.log_path, events=MappingProxyType(dict(self._events)),
                       unknown_items=tuple(item for item in self._unknown.values() if item.repo in runtime.repos),

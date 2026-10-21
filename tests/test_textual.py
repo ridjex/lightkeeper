@@ -504,7 +504,7 @@ class PilotTests(IsolatedAsyncioTestCase):
             self.assertEqual(app.alert_text(alert, app.snapshot, 100).style, 'bold yellow')
             app.expanded_alerts.add(alert.key)
             expanded = app.alert_text(alert, replace(app.snapshot, mono_at=100), 100)
-            self.assertIn('since 59m ago', expanded.plain)
+            self.assertIn('since 58m ago', expanded.plain)   # counted from the notify, not from the row's state
             self.assertIn('Enter opens it', expanded.plain)
             await pilot.press('o')
             await app.workers.wait_for_complete()
