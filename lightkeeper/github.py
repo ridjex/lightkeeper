@@ -72,10 +72,12 @@ class PRStatus:
 
     @classmethod
     def from_pr(cls, pr: PullRequest):
+        # Only checks GitHub reported count, so the light poll (which sees the rollup alone) agrees on wake_key.
+        reported = [c for c in pr.checks if c.reported]
         counts = tuple(sorted(Counter(c.conclusion if c.status == "completed" else c.status
-                                      for c in pr.checks).items()))
+                                      for c in reported).items()))
         return cls(pr.repo, pr.number, pr.state, pr.head_sha, pr.is_draft, pr.author, pr.title,
-                   counts, CICounts.from_states(counts, len(pr.checks)),
+                   counts, CICounts.from_states(counts, len(reported)),
                    failed_checks=tuple(c.name for c in pr.checks if c.failed),
                    approve_refusal=approve_floor(pr) or "", base_ref=pr.base_ref,
                    requested_reviewers=(*pr.requested_users, *pr.requested_teams),
@@ -350,6 +352,8 @@ class Gh:
                                  input=json.dumps({"query": _REQUIRED_CHECKS_QUERY, "variables": {"id": pr_id}}))
             required_checks, declared_checks = parse_required_checks(response, view["headRefOid"])
         except (GhError, GhTimeout, KeyError, TypeError, ValueError) as exc:
+            if isinstance(exc, GhError) and exc.rate_limited:
+                raise                                   # the tick backs off as for every other call
             key = repo, number, view["headRefOid"]
             if key not in self._required_check_warnings:
                 self._required_check_warnings.add(key)

@@ -56,6 +56,21 @@ class StatusTests(unittest.TestCase):
         }, [], []))
         self.assertEqual(light.wake_key, full.wake_key)
 
+    def test_unreported_declared_check_does_not_wake(self):
+        from lightkeeper.github import parse_pull_request
+        response = json.loads(FIXTURE.read_text())
+        response.pop("errors")
+        pr = response["data"]["pr0"]["pullRequest"]
+        contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
+        contexts.update(totalCount=1, checkRunCountsByState=[{"state": "SUCCESS", "count": 1}],
+                        statusContextCountsByState=[])
+        light = parse_pr_statuses(response, [("example/widget", 1)])[0]
+        full = PRStatus.from_pr(parse_pull_request("example/widget", {
+            **pr, "number": 1, "statusCheckRollup": [{"name": "unit", "status": "COMPLETED", "conclusion": "SUCCESS"}]
+        }, [], [], {"unit": False}, ["external"]))
+        self.assertEqual(light.wake_key, full.wake_key)
+        self.assertEqual(full.ci.running, 0)
+
     def test_batches_variables_and_partial_cli_error(self):
         child = FakeRunner(stdout='{"data": {}}')
         gh = Gh(runner=child)

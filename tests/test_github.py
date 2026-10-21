@@ -206,7 +206,6 @@ class GhTests(unittest.TestCase):
         raced["data"]["node"]["commits"]["nodes"][0]["commit"]["oid"] = "new head"
         errors = {"errors": [{"message": "lookup failed"}]}
         for result in (subprocess.CompletedProcess([], 1, "", "HTTP 502"),
-                       subprocess.CompletedProcess([], 1, "", "GraphQL: API rate limit exceeded"),
                        subprocess.TimeoutExpired(["gh", "api", "graphql"], 60),
                        subprocess.CompletedProcess([], 0, "not json", ""),
                        *(subprocess.CompletedProcess([], 0, json.dumps(data), "")
@@ -223,6 +222,14 @@ class GhTests(unittest.TestCase):
             self.assertIn(pr.head_sha, logs.output[0])
             self.assertIn("waiting for every check", logs.output[0])
             self.assertEqual(runner.call_count, 4)
+
+    def test_rate_limited_lookup_raises_so_the_tick_backs_off(self):
+        runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, json.dumps(load("pr_view.json")), ""),
+                                   subprocess.CompletedProcess([], 1, "", "GraphQL: API rate limit exceeded")])
+        with self.assertRaises(GhError) as caught:
+            Gh(runner=runner).pull_request("org/repo", 42)
+        self.assertTrue(caught.exception.rate_limited)
+        self.assertEqual(runner.call_count, 2)
 
     def test_missing_pr_view_id_falls_back_without_graphql(self):
         for value in (None, "", " "):
