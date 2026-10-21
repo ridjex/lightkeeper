@@ -104,6 +104,44 @@ class ProjectionTests(unittest.TestCase):
         self.feed("closed")
         self.assertFalse(self.p.screen(self.runtime, NOW).watching)
 
+    def test_needs_you_alerts_derive_from_watching_and_sort_before_conditions(self):
+        observer = Observer(self.p, self.runtime, mono=lambda: 100, wall=lambda: NOW)
+        observer('condition', key='gh_identity', text='identity unavailable')
+        system = observer.snapshot.alerts[0]
+        observer.feed({**self.rec, 'event': 'nothing', 'reason': 'no readable patch'})
+        self.assertEqual(observer.snapshot.alerts, (system,))
+        observer.feed({**self.rec, 'event': 'notify', 'text': 'example/widget#1: inspect report.pdf'})
+        row = observer.snapshot.watching[0]
+        alert = observer.snapshot.alerts[0]
+        self.assertEqual(alert, Alert(f'needs_you:{row.item.identity}', 'needs_you',
+                         'widget#1 needs you: inspect report.pdf'
+                         ' · Enter opens it, A approves as owner, o opens GitHub', row.since, row.item.repo))
+        self.assertEqual(observer.snapshot.alerts[1:], (system,))
+        self.assertEqual(observer.runtime.alerts, (system,))
+        observer.publish()
+        self.assertEqual(observer.snapshot.alerts, (alert, system))
+        observer.feed({**self.rec, 'key': ['example/widget', 2, 'bbbbbbb'],
+                       'event': 'notify', 'text': 'inspect second item'})
+        self.assertEqual([a.level for a in observer.snapshot.alerts], ['needs_you', 'needs_you', 'error'])
+        self.assertEqual(len({a.key for a in observer.snapshot.alerts}), 3)
+        hidden = self.p.screen(dataclasses.replace(self.runtime, repos=()), NOW)
+        self.assertFalse(hidden.alerts)
+
+    def test_needs_you_alert_clears_on_each_clearing_event(self):
+        for event in ('satisfied', 'owner_approve', 'ignore', 'closed', 'applied', 'gate_gone'):
+            with self.subTest(event=event):
+                self.p = Projection()
+                extra = dict(kind='deployment', key=['example/widget', 100, 1, 10]) if event == 'gate_gone' else {}
+                self.feed('seen', **extra)
+                self.feed('notify', text='inspect this', **extra)
+                self.assertEqual(len(self.p.screen(self.runtime, NOW).alerts), 1)
+                self.feed(event, action='approve', **extra)
+                self.assertFalse(self.p.screen(self.runtime, NOW).alerts)
+        self.p = Projection()
+        self.feed('notify', text='inspect this')
+        self.feed('seen', key=['example/widget', 1, 'new-head'])
+        self.assertFalse(self.p.screen(self.runtime, NOW).alerts)
+
     def test_since_repeats_rules_and_bounded_history(self):
         self.p = Projection(history_limit=2)
         self.feed("nothing", reason="look")
@@ -165,6 +203,48 @@ class ProjectionTests(unittest.TestCase):
 
 @unittest.skipUnless(importlib.util.find_spec("rich"), "Rich is optional")
 class RenderTests(unittest.TestCase):
+    def test_needs_you_badge_styles_in_color_ascii_and_no_color(self):
+        from rich.console import Console
+        from lightkeeper.ui.rich_view import header_lines, stats_text
+        screen = fixture_screen()
+        for count in (0, 1):
+            shown = dataclasses.replace(screen, watching=screen.watching if count else ())
+            for ascii in (False, True):
+                badge = f"{'#' if ascii else '◆'} {count} needs you"
+                for no_color in (False, True):
+                    console = Console(file=io.StringIO(), force_terminal=True, color_system='standard',
+                                      no_color=no_color, width=200)
+                    styled = stats_text(shown, ascii)
+                    style = styled.get_style_at_offset(console, styled.plain.index(badge))
+                    self.assertEqual(bool(style.reverse), bool(count))
+                    self.assertEqual(bool(style.bold), bool(count))
+                    self.assertEqual(bool(style.dim), not bool(count))
+                    self.assertEqual(style.color.name, 'yellow')
+                    console.print(header_lines(shown, 100, 200, ascii))
+                    output = console.file.getvalue()
+                    self.assertIn(badge, output)
+                    if count:
+                        self.assertIn('1;7' if no_color else '1;7;33', output)
+
+    def test_needs_you_row_and_plain_alert_keep_history_verdict(self):
+        from lightkeeper.ui.model import HistoryRow
+        from lightkeeper.ui.rich_view import render, row_data
+        screen = fixture_screen()
+        row = dataclasses.replace(screen.watching[0], state='silent')
+        history = HistoryRow(row.item, 'silent', 'no patch', NOW)
+        screen = dataclasses.replace(screen, watching=(row,), history=(history,))
+        for ascii in (False, True):
+            widths, cells = row_data(screen, screen.watching, 100, 100, ascii)
+            state = next(cell for cell in cells[0] if cell.plain == 'needs you')
+            self.assertEqual(state.style, 'bold yellow')
+            self.assertGreaterEqual(widths[cells[0].index(state)], len('needs you'))
+            _, historical = row_data(screen, screen.history, 100, 100, ascii, True)
+            self.assertIn('silent', [cell.plain for cell in historical[0]])
+            alert_line = next(part for part in render(screen, 100, 250, 40, ascii).renderables
+                              if getattr(part, 'plain', '').startswith(' # widget' if ascii else ' ◆ widget'))
+            self.assertEqual(alert_line.style, 'bold yellow')
+            self.assertIn('Enter opens it, A approves as owner, o opens GitHub', alert_line.plain)
+
     def test_github_identity_header(self):
         screen = fixture_screen()
         for actual, expected in (("me", "gh me ✓"), ("other", "gh ✗ other"), (None, "gh …")):
@@ -293,7 +373,8 @@ class RenderTests(unittest.TestCase):
         output = console.export_text()
         self.assertIn("lightkeeper stopped", output)
         self.assertIn("needs you: widget#1", output)
-        self.assertIn("alerts: search hit its result limit", output)
+        self.assertIn("alerts: widget#1 needs you:", output)
+        self.assertIn("search hit its result limit", output)
 
 
 class IntegrationTests(unittest.TestCase):

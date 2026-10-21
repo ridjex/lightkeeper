@@ -193,7 +193,11 @@ class Projection:
             return tuple(sorted(Counter(action for revision, action in self._counts.get((day, dry), ())
                                         if revision[1] in runtime.repos).items()))
         history = tuple(h for h in reversed(self._history) if h.item.repo in runtime.repos)
-        return Screen(runtime, tuple(rows), history, runtime.alerts, Stats(counts(False), counts(True)),
+        alerts = tuple(Alert(f"needs_you:{r.item.identity}", "needs_you",
+                             f"{label(r.item, runtime.repos)} needs you: {r.needs_you}"
+                             " · Enter opens it, A approves as owner, o opens GitHub",
+                             r.since, r.item.repo) for r in rows if r.needs_you) + runtime.alerts
+        return Screen(runtime, tuple(rows), history, alerts, Stats(counts(False), counts(True)),
                       wall_now, self.log_path, events=MappingProxyType(dict(self._events)),
                       unknown_items=tuple(item for item in self._unknown.values() if item.repo in runtime.repos),
                       details=MappingProxyType(dict(self._details)))

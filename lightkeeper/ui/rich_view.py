@@ -104,17 +104,19 @@ def item_text(item, repos, width):
 
 
 def stats_text(screen, ascii=False, width=None):
-    result = text(" today  ", "dim")
+    result = text(" today  ")
     for action, state in (("approve", "approved"), ("request_changes", "changes"), ("comment", "comment")):
         result.append_text(glyph(state, 0, ascii)).append(f" {dict(screen.stats.posted).get(action, 0)} {state}  ")
     if screen.stats.dry_run:
         result.append("dry-run " + ", ".join(f"{n} would {a.replace('_', ' ')}" for a, n in screen.stats.dry_run), "italic")
         result.append("  ")
-    needs = f"{'#' if ascii else '◆'} {sum(bool(r.needs_you) for r in screen.watching)} needs you"
+    count = sum(bool(r.needs_you) for r in screen.watching)
+    needs = f"{'#' if ascii else '◆'} {count} needs you"
     if width is not None and result.cell_len + len(needs) > width:
         result.truncate(max(0, width - len(needs) - 2), overflow="ellipsis")
         result.append("  ")
-    result.append(needs, "bold yellow")
+    result.stylize("dim")
+    result.append(needs, "bold reverse yellow" if count else "dim yellow")
     return result
 
 
@@ -245,7 +247,8 @@ def row_data(screen, rows, mono_now, width, ascii=False, historical=False):
     elapsed = max(0, mono_now - runtime.phase_since)
     item_width = min(32, max((text(label(r.item, runtime.repos)).cell_len for r in rows), default=8))
     item_width = min(item_width, max(8, width // 3))
-    state_width = max((len(word(r)) + (4 if r.dry_run or getattr(r, "repo_dry", False) else 0) for r in rows), default=9)
+    state_width = max((len("needs you" if not historical and r.needs_you else word(r))
+                       + (4 if r.dry_run or getattr(r, "repo_dry", False) else 0) for r in rows), default=9)
     show_author = wide or not historical
     author_width = min(14, max((text(r.item.author).cell_len for r in rows), default=0))
     author_width = max(6, author_width)
@@ -275,8 +278,10 @@ def row_data(screen, rows, mono_now, width, ascii=False, historical=False):
         why = row.why if historical or row.state == "withheld" else row.needs_you or row.why
         if historical:
             why = (f"({row.change_text or 'new rules'}) " if row.new_rules else "") + why + (f" (×{row.repeats})" if row.repeats > 1 else "")
-        shown_word = ("dry " if row.dry_run or getattr(row, "repo_dry", False) else "") + word(row)
-        cells.extend([text(shown_word, STATES[row.state][2] + (" italic" if row.dry_run else "")), text(why)])
+        needs_you = not historical and row.needs_you
+        shown_word = ("dry " if row.dry_run or getattr(row, "repo_dry", False) else "") + ("needs you" if needs_you else word(row))
+        style = "bold yellow" if needs_you else STATES[row.state][2]
+        cells.extend([text(shown_word, style + (" italic" if row.dry_run else "")), text(why)])
         if not historical:
             cells.append(ci_text(row.ci, ascii) if row.item.kind == "pr" else text())
             since_snapshot = max(0, mono_now - screen.mono_at) if screen.mono_at is not None else 0
@@ -308,7 +313,9 @@ def render(screen: Screen, mono_now: float, width: int, height: int, ascii: bool
         message = alert.text
         if alert.key == "reviewer_paused" and runtime.reviewer_paused_until:
             message += f"; resumes in {countdown(runtime.reviewer_paused_until - mono_now)}"
-        alert_lines.append(text(f" {'^' if ascii else '▲'} {message}", "red" if alert.level == "error" else "yellow"))
+        mark = ("#" if ascii else "◆") if alert.level == "needs_you" else ("^" if ascii else "▲")
+        style = "bold yellow" if alert.level == "needs_you" else "red" if alert.level == "error" else "yellow"
+        alert_lines.append(text(f" {mark} {message}", style))
     if len(alerts) > 3:
         alert_lines.append(text(f" +{len(alerts) - 3} more alerts", "yellow"))
     # Reserve header, headings, footer, alerts; then remove blanks, history, ordinary watching rows.

@@ -301,7 +301,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.now = __import__("time").time() + CI_WAIT_MAX_S + 60               # journal stamps use the wall clock
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
-        self.assertEqual(self.notified, ["org/repo#7: checks still running after 3 h; look yourself"])
+        self.assertEqual(self.notified, ["org/repo#7: checks still running after 3 h; open it and decide"])
 
     def test_dry_run_notifications_are_marked(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
@@ -425,8 +425,22 @@ class PullRequestLifecycle(LifecycleBase):
         r = self.runner(reviewer=FakeReviewer([APPROVE]))
         self.assertEqual(r.process_pr("org/repo", 7), "nothing")
         self.assertEqual(self.gh.writes, [])
-        self.assertIn("despite failed check: sast", self.notified[0])
+        self.assertEqual(self.notified, ["org/repo#7: the model wanted to approve despite failed check: sast; open it and decide"])
         self.assertEqual(r.process_pr("org/repo", 7), "final")
+
+    def test_missing_patch_floor_names_file_and_owner_action_once(self):
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(files=(make_file('report.pdf', patch=None),))]
+        r = self.runner(reviewer=FakeReviewer([APPROVE]))
+        self.assertEqual(r.process_pr("org/repo", 7), "nothing")
+        self.assertEqual(self.gh.writes, [])
+        expected = ("org/repo#7: the model wanted to approve but report.pdf has no patch to read; "
+                    "open it, and press A in its detail to approve as owner if it is fine")
+        self.assertEqual(self.notified, [expected])
+        records = [json.loads(line) for line in self.journal.path.read_text().splitlines()]
+        self.assertEqual(next(rec['text'] for rec in records if rec['event'] == 'notify'), expected)
+        self.assertIn(('nothing', 'approve refused by the floor: patch not visible: report.pdf'), self.events())
+        self.assertEqual(r.process_pr("org/repo", 7), "final")
+        self.assertEqual(self.notified, [expected])
 
     def test_already_posted_review_is_not_posted_again(self):
         # the tool posted a comment, then died before journaling it

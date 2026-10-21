@@ -261,7 +261,10 @@ class PRDetail(Screen):
         private = detail.latest_private_reason if detail else next(
             (e.private_reason for e in reversed(events) if e.private_reason), "")
         summary = detail.latest_summary if detail else next((e.summary for e in reversed(events) if e.summary), "")
-        if row.state in ("closed", "merged", "approved") and not row.dry_run:
+        needs_you = getattr(row, "needs_you", None)
+        if needs_you:
+            next_step = "o opens GitHub · A approves as owner if it is fine"
+        elif row.state in ("closed", "merged", "approved") and not row.dry_run:
             next_step = "final"
         elif row.state == "yours":
             next_step = "yours (takeover)"
@@ -298,9 +301,9 @@ class PRDetail(Screen):
         self.query_one("#detail-top", Static).update(Group(
             text(f"{item.repo}#{item.number} · {item.title}", "bold"),
             text(" · ".join(filter(None, metadata)), "dim")))
-        state = glyph(row.state, self.app.clock(), self.app.ascii)
-        state.append(" " + word(row), STATES[row.state][2])
-        status = [("state", state), ("why", row.why or "none"), ("next step", next_step), ("CI", counts)]
+        state = text().append_text(glyph(row.state, self.app.clock(), self.app.ascii))
+        state.append(" needs you" if needs_you else " " + word(row), "bold yellow" if needs_you else STATES[row.state][2])
+        status = [("state", state), ("why", needs_you or row.why or "none"), ("next step", next_step), ("CI", counts)]
         if reviewers is not None:
             status.append(("reviewers", ", ".join(reviewers) or "none"))
         closed = next((e for e in reversed(events) if e.state in ("closed", "merged")), None)

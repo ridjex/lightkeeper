@@ -122,6 +122,30 @@ class IdleSceneTests(TestCase):
             self.assertEqual(lighthouse(14, 160, 3, checking, look=Look(tempo=.5)),
                              lighthouse(7, 160, 3, checking, look=Look(tempo=1)))
 
+    def test_needs_you_changes_only_beam_colors_deterministically(self):
+        for hour in (0, 12, 19, 23):
+            for checking in (False, True):
+                look = replace(DEFAULT_LOOK, needs_you=True)
+                for t in (0, 1, 7):
+                    args = (t, 200, 8, checking)
+                    rest = (hour, .5, event_start(0) + .3)
+                    normal, accents = _raster(*args, DEFAULT_LOOK, *rest)
+                    amber, changed = _raster(*args, look, *rest)
+                    self.assertEqual(normal, amber)
+                    self.assertEqual((amber, changed), _raster(*args, look, *rest))
+                    with patch('lightkeeper.ui.idle._beam', return_value=[]):
+                        unlit, _ = _raster(*args, DEFAULT_LOOK, *rest)
+                    changed_cells = [(x, y) for y in range(HEIGHT) for x in range(200)
+                                     if accents[y].get(x) != changed[y].get(x)]
+                    self.assertEqual(bool(changed_cells), hour != 12)
+                    for x, y in changed_cells:
+                        self.assertGreater(normal[y][x], unlit[y][x])
+                    frame = lighthouse(*args, look=look, hour=hour, event_time=rest[-1])
+                    self.assertEqual(frame, lighthouse(*args, look=look, hour=hour, event_time=rest[-1]))
+                    for ascii, no_color in ((True, False), (False, True)):
+                        self.assertEqual(lighthouse(*args, ascii, no_color=no_color, look=look, hour=hour),
+                                         lighthouse(*args, ascii, no_color=no_color, look=DEFAULT_LOOK, hour=hour))
+
     def test_lunar_phase_known_new_and_full_moons(self):
         self.assertAlmostEqual(lunar_phase(datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)), 0)
         self.assertAlmostEqual(lunar_phase(datetime(2000, 1, 21, 4, 40, tzinfo=timezone.utc)), .5, delta=.02)
@@ -335,9 +359,9 @@ class IdleSceneTests(TestCase):
     @unittest.skipUnless(os.environ.get('LIGHTKEEPER_BENCH'), 'set LIGHTKEEPER_BENCH=1 to time frames')
     def test_warm_all_on_frame_budget(self):
         from timeit import repeat
-        for hour in (7, 12, 19, 23):
+        for hour, needs_you in ((7, False), (12, False), (19, False), (23, False), (19, True), (23, True)):
             def frame():
-                return lighthouse(1, 200, 8, True, look=Look(daytime=True, moon=True, events=True),
+                return lighthouse(1, 200, 8, True, look=Look(daytime=True, moon=True, events=True, needs_you=needs_you),
                                                    hour=hour, event_time=event_start(0) + .3)
             frame()
             self.assertLess(min(repeat(frame, number=50, repeat=3)) / 50, .004)
@@ -417,13 +441,18 @@ class UXPilots(IsolatedAsyncioTestCase):
                 await pilot.pause()
                 self.assertTrue(app.is_running)
             self.assertEqual(app.look, Look(.8, False, False, True))
+            await pilot.press('n')
+            self.assertTrue(app.look.needs_you)
+            self.assertIn('needs_you', app.query_one('#footer').content.plain)
+            await pilot.press('n')
+            self.assertFalse(app.look.needs_you)
             self.assertEqual(app.hour_offset, 0)
             self.assertIsNotNone(app.event_slot)
             self.assertFalse(any(binding.key == 't' for binding in app.BINDINGS))
             self.assertTrue(app.checking)
             self.assertEqual(app.repos, 3)
             self.assertEqual(app.query_one('#idle').size.height, 12)
-            self.assertEqual(app.query_one('#footer').size.height, 1)
+            self.assertEqual(app.query_one('#footer').size.height, 2)
             self.assertIn('Look(', app.query_one('#footer').content.plain)
             for _ in range(20):
                 app.action_tempo(-.1)
@@ -432,6 +461,24 @@ class UXPilots(IsolatedAsyncioTestCase):
                 app.action_tempo(.1)
             self.assertEqual(app.look.tempo, 1.5)
             await pilot.press('q')
+
+    async def test_idle_receives_needs_you_and_refreshes_compact_key(self):
+        snapshot = fixture_screen()
+        snapshot = replace(snapshot, runtime=replace(snapshot.runtime, idle='always'))
+        for width in (50, 200):
+            app = self.app(snapshot)
+            with patch('lightkeeper.ui.textual_app.idle_panel', wraps=idle_panel) as render:
+                async with app.run_test(size=(width, 52)) as pilot:
+                    await pilot.pause()
+                    self.assertTrue(render.call_args.kwargs['look'].needs_you)
+                    cleared = replace(snapshot, watching=tuple(replace(row, needs_you=None)
+                                                               for row in snapshot.watching))
+                    app.observer.snapshot = cleared
+                    render.reset_mock()
+                    app.refresh_snapshot()
+                    self.assertFalse(render.call_args.kwargs['look'].needs_you)
+                    if width == 50:
+                        self.assertFalse(app._idle_compact_key[-1])
 
     async def test_quiet_watching_reserves_twelve_rows_empty_and_populated(self):
         snapshot = fixture_screen()
@@ -485,8 +532,8 @@ class UXPilots(IsolatedAsyncioTestCase):
         snapshot = fixture_screen()
         app = self.app(replace(snapshot, runtime=replace(snapshot.runtime, idle='always')))
         async with app.run_test(size=(160, 40)) as pilot:
-            for height, shown, panel_height in ((40, True, 12), (30, True, 3), (24, True, 3),
-                                                (23, False, 0), (20, False, 0)):
+            for height, shown, panel_height in ((40, True, 12), (30, True, 3), (25, True, 3),
+                                                (24, False, 0), (20, False, 0)):
                 await pilot.resize_terminal(160, height)
                 app.refresh_snapshot()
                 await pilot.pause()
@@ -501,7 +548,7 @@ class UXPilots(IsolatedAsyncioTestCase):
                 history, footer = app.query_one('#history'), app.query_one('#footer')
                 self.assertGreaterEqual(history.size.height, 1)
                 if height == 20:
-                    # Alerts plus the fixed minimum need 21 rows; Overview scrolls.
+                    # Alerts plus the fixed minimum need 22 rows; Overview scrolls.
                     history.focus()
                     history.scroll_visible(animate=False)
                     await pilot.pause()

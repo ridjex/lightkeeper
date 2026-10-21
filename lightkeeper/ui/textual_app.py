@@ -445,14 +445,17 @@ class TextualApp(App):
             self._idle_compact_key = None
             return
         layout = (width, free_rows, always)
-        compact_key = (layout, int(now), screen.runtime.tempo, screen.runtime.clock, screen.runtime.moon, screen.runtime.events) if width < 60 or free_rows < 14 else None
+        needs_you = any(r.needs_you for r in screen.watching)
+        compact_key = (layout, int(now), screen.runtime.tempo, screen.runtime.clock, screen.runtime.moon,
+                       screen.runtime.events, needs_you) if width < 60 or free_rows < 14 else None
         if compact_key is not None and compact_key == self._idle_compact_key and not self._render_failed:
             return
         if force or layout != self._idle_layout or self._render_failed or compact_key is not None:
             panel.update(idle_panel(screen, now, width, self.ascii,
                                     free_rows=free_rows, no_color=self.no_color,
                                     look=Look(tempo=screen.runtime.tempo, daytime=screen.runtime.clock,
-                                              moon=screen.runtime.moon, events=screen.runtime.events)))
+                                              moon=screen.runtime.moon, events=screen.runtime.events,
+                                              needs_you=needs_you)))
             if self._screen_trace is not None:
                 self._screen_trace.rendered += 1
             self._idle_layout = layout
@@ -466,8 +469,15 @@ class TextualApp(App):
             action = self.alert_command(alert)
             attempt = next(((at, result) for key, at, result in screen.runtime.alert_attempts if key == alert.key), None)
             last = f"{age(now - attempt[0])} ago · {attempt[1]}" if attempt else "not attempted"
-            message += (f"\n  cause: {alert.text}\n  scope: {alert.scope} · since {age(now - alert.since)} ago"
-                        f"\n  last attempt and result: {last}\n  action: {action[2] if action else 'none'}")
+            since = now - alert.since
+            scope, hint = alert.scope, action[2] if action else "none"
+            if alert.level == "needs_you":
+                since = screen.wall_now - alert.since
+                if screen.mono_at is not None:
+                    since += max(0, now - screen.mono_at)
+                scope, hint = alert.repo, "Enter opens it · A approves as owner in detail · o opens GitHub"
+            message += (f"\n  cause: {alert.text}\n  scope: {scope} · since {age(since)} ago"
+                        f"\n  last attempt and result: {last}\n  action: {hint}")
             fix = self.fix_command(alert)
             if fix:
                 message += f" · c copy: {fix}"
@@ -475,7 +485,9 @@ class TextualApp(App):
                 affected = ", ".join(f"{i.repo}#{i.number} @{i.head[:7]}" for i in screen.unknown_items)
                 message += f"\n  affected: {affected or 'none'} · reconciled automatically when GitHub confirms; otherwise left to you"
         render = multiline if alert.key in self.expanded_alerts else text
-        return render(f" {'^' if self.ascii else '▲'} {message}", "red" if alert.level == "error" else "yellow")
+        mark = ("#" if self.ascii else "◆") if alert.level == "needs_you" else ("^" if self.ascii else "▲")
+        style = "bold yellow" if alert.level == "needs_you" else "red" if alert.level == "error" else "yellow"
+        return render(f" {mark} {message}", style)
 
     @staticmethod
     def alert_command(alert):
@@ -626,9 +638,19 @@ class TextualApp(App):
                 return
 
     def action_open_url(self):
-        if self.selected and self.selected[0] != "alerts":
-            url = self.selected[1].item.url
+        row = self.selected_item()
+        if row:
+            url = row.item.url
             self.run_worker(lambda: self.open_url_in_thread(url), thread=True)
+
+    def selected_item(self):
+        if not self.selected:
+            return None
+        section, row = self.selected
+        if section != "alerts":
+            return row
+        if row.level == "needs_you":
+            return next((r for r in self.snapshot.watching if f"needs_you:{r.item.identity}" == row.key), None)
 
     def open_url_in_thread(self, url):
         try:
@@ -672,15 +694,15 @@ class TextualApp(App):
     def action_open_detail(self):
         if not self.selected:
             return
-        section, row = self.selected
-        if section != "alerts" and row.item.kind != "pr":
+        row = self.selected_item()
+        if row and row.item.kind != "pr":
             self.action_open_url()
-        elif section == "alerts":
-            self.expanded_alerts.symmetric_difference_update({row.key})
+        elif row:
+            self.push_screen(PRDetail(row))
+        else:
+            self.expanded_alerts.symmetric_difference_update({self.selected[1].key})
             self._last_snapshot = None
             self.refresh_snapshot()
-        else:
-            self.push_screen(PRDetail(row))
 
     def action_alert_action(self):
         if self.selected and self.selected[0] == "alerts":

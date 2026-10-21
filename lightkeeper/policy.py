@@ -118,7 +118,7 @@ def evaluate_pr(pr: PullRequest, policy) -> Decision:
         return Decision("ignore", "no changed files", "eligibility")
     if pr.changed_files is not None and pr.changed_files != len(pr.files):
         reason = f"file list incomplete: {len(pr.files)} of {pr.changed_files}"
-        return Decision("nothing", reason, "eligibility", notify=f"{pr.repo}#{pr.number}: {reason}; look yourself")
+        return Decision("nothing", reason, "eligibility", notify=f"{pr.repo}#{pr.number}: {reason}; open it and decide")
     return Decision("review", "eligible; the model decides", "eligibility")
 
 

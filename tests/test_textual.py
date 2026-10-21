@@ -24,6 +24,7 @@ if HAS_UI:
     from textual.widgets import DataTable, Input, Static
     from rich.text import Text
     from lightkeeper.ui.textual_app import TextualApp
+    from lightkeeper.ui.detail import PRDetail, ConfirmOwnerApprove
 
 from lightkeeper import __main__ as cli
 from lightkeeper.commands import Command, CommandInbox
@@ -471,6 +472,8 @@ class PilotTests(IsolatedAsyncioTestCase):
         async with app.run_test(size=(140, 30)) as pilot:
             self.assertEqual(app.selected[0], 'alerts')
             await pilot.press('down')
+            self.assertEqual(app.selected[1].key, 'search_saturated')
+            await pilot.press('down')
             self.assertEqual((app.selected[0], app.selected[1].item.number), ('watching', 1))
             await pilot.press('up')
             self.assertEqual(app.selected[0], 'alerts')
@@ -489,6 +492,31 @@ class PilotTests(IsolatedAsyncioTestCase):
             await pilot.press('n')
             self.assertEqual(app.selected[1].item.number, 1)
             self.assertEqual(sum(table.show_cursor for table in app.query(DataTable)), 1)
+
+    async def test_needs_you_alert_opens_detail_and_owner_confirmation(self):
+        app = self.app()
+        app.ascii = False
+        app.observer.snapshot = replace(app.observer.snapshot, runtime=replace(
+            app.observer.snapshot.runtime, live_lock_held=True, approve_repos=("example/widget",)))
+        async with app.run_test(size=(200, 40)) as pilot:
+            alert = app.selected[1]
+            self.assertEqual(alert.level, 'needs_you')
+            self.assertEqual(app.alert_text(alert, app.snapshot, 100).style, 'bold yellow')
+            app.expanded_alerts.add(alert.key)
+            expanded = app.alert_text(alert, replace(app.snapshot, mono_at=100), 100)
+            self.assertIn('since 59m ago', expanded.plain)
+            self.assertIn('Enter opens it', expanded.plain)
+            await pilot.press('o')
+            await app.workers.wait_for_complete()
+            app.opener.assert_called_once_with('https://github.com/example/widget/pull/1')
+            await pilot.press('enter')
+            self.assertIsInstance(app.screen, PRDetail)
+            self.assertEqual(app.screen.key, ('example/widget', 1, 'aaaaaaa'))
+            self.assertIn('state ✗ needs you', ' '.join(contents(app).split()))
+            await pilot.press('A')
+            self.assertIsInstance(app.screen, ConfirmOwnerApprove)
+            self.assertTrue(app.worker.runner.commands.empty())
+            await pilot.press('escape')
 
     async def test_open_pr_detail_deployment_url_and_wake(self):
         app = self.app()
@@ -589,7 +617,7 @@ class PilotTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.selected[1].item.identity, selected.item.identity)
             self.assertEqual(app.selected[1].item.head, 'new-head')
-            self.assertEqual(app.cursor, 1)  # sorting moved the row, identity kept it selected
+            self.assertEqual(app.cursor, len(screen.alerts))  # sorting moved the row, identity kept it selected
             nearest = app.rows[app.cursor + 1]
             app.observer.snapshot = replace(screen, watching=tuple(r for r in screen.watching if r != selected))
             app.refresh_snapshot()

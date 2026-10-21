@@ -717,7 +717,7 @@ class Runner:
             if (decision.reason.startswith("checks still running") and since
                     and self.clock() - _parse_iso(since) > CI_WAIT_MAX_S and not self.journal.was_notified(key, "ci-wait")):
                 self._notify("pr", key, f"{pr.repo}#{pr.number}: checks still running after "
-                                        f"{CI_WAIT_MAX_S // 3600} h; look yourself", tag="ci-wait")
+                                        f"{CI_WAIT_MAX_S // 3600} h; open it and decide", tag="ci-wait")
             return "defer"
         assert decision.outcome in ("approve", "request_changes", "comment"), decision
         action = decision.outcome
@@ -731,7 +731,11 @@ class Runner:
         if blocked:                                           # the floor the model cannot be talked out of
             self._journal("pr", key, "nothing", reason=f"approve refused by the floor: {blocked}", source="eligibility",
                           fingerprint=pr.fingerprint)
-            notify("nothing", f"{pr.repo}#{pr.number}: the model wanted to approve despite {blocked}; look yourself")
+            message = (f"the model wanted to approve but {blocked.removeprefix('patch not visible: ')} has no patch to read; "
+                       "open it, and press A in its detail to approve as owner if it is fine"
+                       if blocked.startswith("patch not visible: ") else
+                       f"the model wanted to approve despite {blocked}; open it and decide")
+            notify("nothing", f"{pr.repo}#{pr.number}: {message}")
             return "nothing"
         try:
             result = self._write_pr(pr, decision)
@@ -777,7 +781,7 @@ class Runner:
         blocking = latest is not None and latest.state == "CHANGES_REQUESTED" and is_automated(latest.body)
         if blocking and not self.journal.was_notified(key, "block-active"):
             self._notify("pr", key, f"{pr.repo}#{pr.number}: your automated 'changes requested' still blocks it "
-                                    f"and the new head was not approved; look yourself", tag="block-active")
+                                    f"and the new head was not approved; open it and decide", tag="block-active")
             return True
         return False
 

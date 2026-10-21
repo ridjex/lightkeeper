@@ -29,9 +29,10 @@ class IdlePreview(App):
         Binding("full_stop", "hour(1)", "Later"),
         Binding("m", "toggle('moon')", "Moon"),
         Binding("e", "toggle('events')", "Events"),
+        Binding("n", "toggle('needs_you')", "Needs you"),
         Binding("E", "event", "Next event now"),
     ]
-    KEYS = "c checking  +/- repos  [ ] tempo  d daytime  , . hour  m moon  e events  E next event  q quit"
+    KEYS = "c checking  +/- repos  [ ] tempo  d daytime  , . hour  m moon  e events  E next event  n needs you  q quit"
 
     def __init__(self, repos=3, ascii=False):
         super().__init__()
@@ -67,13 +68,13 @@ class IdlePreview(App):
                 self.event_started = None
                 event_time = None
         fields = [f"tempo={self.look.tempo:.1f}"]
-        fields.extend(name for name in ('daytime', 'moon', 'events') if getattr(self.look, name))
+        fields.extend(name for name in ('daytime', 'moon', 'events', 'needs_you') if getattr(self.look, name))
         state = (f" Look({', '.join(fields)})  hour={hour:05.2f}"
                  + ("  checking" if self.checking else ""))
         event = event_at(now * self.look.tempo / DEFAULT_LOOK.tempo if event_time is None else event_time)
         if self.look.events and event:
             state += f"  event={event[0]}"
-        keys = self.KEYS if self.size.width > len(self.KEYS) else 'c +/- [ ] d , . m e E q'
+        keys = self.KEYS if self.size.width > len(self.KEYS) else 'c +/- [ ] d , . m e E n q'
         footer = state + ('\n ' if len(state) + len(keys) + 2 > self.size.width else '  ') + keys
         self.query_one("#footer", Static).update(Text(footer, 'dim', no_wrap=True, overflow='crop'))
         runtime = Runtime(phase="checking" if self.checking else "idle", next_check_at=self.started + 300,

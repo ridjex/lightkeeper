@@ -4,6 +4,21 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-10-21
+
+### Changed
+
+- Needs-you items lead Alerts, show a bold reverse header badge and a `needs you` state in Watching
+  and PR detail; the nighttime lighthouse beam turns amber while an item needs attention.
+- Floor-refusal notifications say what to inspect and how to decide; missing patches name the file
+  and point to owner approval in PR detail. Automatic approval floors remain unchanged.
+
+### Added
+
+- Enter on a needs-you alert opens its PR detail, with existing owner approval (`A`) and GitHub (`o`)
+  actions; `o` also opens GitHub directly from the alert.
+- `n` toggles the amber needs-you beam in the offline idle preview.
+
 ## [0.1.6] — 2026-10-15
 
 ### Changed

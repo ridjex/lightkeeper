@@ -15,6 +15,7 @@ class Look:
     daytime: bool = False
     moon: bool = False
     events: bool = False
+    needs_you: bool = False
 
 
 DEFAULT_LOOK = Look(tempo=.8, daytime=True, moon=True, events=True)
@@ -43,6 +44,8 @@ STONE = _palette('#1e1e22', '#b7bac4')
 MOON = _palette('#1e1e22', '#f0f0df')
 SUN = _palette('#30353d', '#ffc66d', '#fff1ad')
 FIRE = _palette('#8c251e', '#f35c28', '#ffe291')
+# Amber light calls the owner to an unresolved needs-you item, retaining the beam's shading.
+AMBER_BEAM = _palette(SEA[0], FIRE[12], FIRE[-1])
 
 
 def _styles(palette):
@@ -365,6 +368,8 @@ def _raster(t, width, repos, checking, look, hour, phase, event_time):
                 if glow and raster[y][x] < 1:
                     raster[y][x] += glow
                     accents[y].pop(x, None)  # The beam is near: it crosses the moon, never passes behind it.
+                    if look.needs_you:
+                        accents[y][x] = AMBER_BEAM[_level(raster[y][x])]
             else:
                 shimmer = .22 + .78 * row_shimmer[y] * column_shimmer
                 glint = max(0., 1 - abs(slopes[x] + row_slope[y]) / .22) ** 2

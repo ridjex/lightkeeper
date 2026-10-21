@@ -109,7 +109,7 @@ class EligibilityTests(unittest.TestCase):
         self.assertEqual(self.outcome(make_pr(changed_files=1)), "review")
         d = evaluate_pr(make_pr(changed_files=2), self.policy)
         self.assertEqual((d.outcome, d.reason), ("nothing", "file list incomplete: 1 of 2"))
-        self.assertIn("look yourself", d.notify)
+        self.assertIn("open it and decide", d.notify)
 
     def test_incomplete_patch_goes_to_the_model_marked(self):
         self.assertEqual(self.outcome(make_pr(files=())), "ignore")

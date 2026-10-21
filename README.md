@@ -132,6 +132,9 @@ early wake adds a full tick of about three calls per watched pull request.
 Deployments waiting for your approval (found through your GitHub notifications) are judged from the
 workflow, every job and the logs before the gate; the model answers `approve | ignore`.
 
+A binary file without a readable patch always needs a human: the screen raises a needs-you alert,
+highlights its header badge and turns the lighthouse beam amber until you decide.
+
 ## What the code guarantees, whatever the rules say
 
 - The model has no tools and no network: it sees what the script collected, nothing else, and only
@@ -336,6 +339,12 @@ setting, including the screen settings form; `?` shows the keys. Rules, template
 notes open in a built-in editor; `Ctrl-E` opens `$EDITOR`. A lighthouse scene sits above the
 Watching table by default (`[screen] idle = "quiet"` shows it only while nothing is watched). Everything about the screen,
 the keys, the PR detail, the editors and the idle scene is in [docs/screen.md](docs/screen.md).
+
+Items needing you appear first in Alerts as bold amber `◆` lines, with a reverse-video `◆ N needs you`
+header badge and a `needs you` Watching state. The nighttime lighthouse beam turns amber too.
+Press `Enter` on the alert to open PR detail, then `o` to inspect it on GitHub and `A` to approve as owner
+if it is fine (with confirmation); `o` also works directly on the alert. ASCII uses `#`, and the badge
+keeps its reverse-video emphasis with `NO_COLOR`.
 
 ## Troubleshooting
 

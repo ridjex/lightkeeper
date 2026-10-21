@@ -20,6 +20,14 @@ History gets the remaining height. Below 60 columns or 14 free rows, the picture
 rows; it hides if its slot would leave no room for a History row. The Watching minimum still applies;
 if alerts and the fixed blocks together exceed the terminal height, Overview scrolls to keep History
 reachable.
+
+Needs-you items appear first in Alerts as bold amber `◆` lines. The header badge `◆ N needs you` uses
+bold reverse video when nonzero, Watching and PR detail show `needs you`, and the nighttime lighthouse
+beam turns amber. `Enter` on an alert opens PR detail; `o` opens GitHub from either place, and `A` in
+detail opens owner approval with confirmation. Inspect the change before approving. Alerts clear when
+the item no longer needs you; History keeps the actual verdict. ASCII uses `#`; `NO_COLOR` retains
+the badge's reverse-video emphasis.
+
 Tempo defaults to 0.8; the local-hour palette and sun/moon position, moon and rare events are on.
 The scene starts at 10 fps while visible. A frame is skipped while Textual's writer queue still holds the
 previous one (the terminal is behind; without a writer thread, a timer more than one interval late counts
@@ -69,6 +77,7 @@ The menu (`m`) opens a Screen settings form that edits exactly these keys and ap
 | `d`, `,` / `.` | Local-hour palette; scrub −/+ one hour, wrapping at midnight |
 | `m` | Date-derived lunar disc at night; the daytime sun appears automatically with `d` |
 | `e`, `E` | Rare deterministic events; enable events and force the next slot now |
+| `n` | Toggle needs-you amber beam (use `d` or scrub to night to see the beam) |
 
 Dawn and dusk retain warm palettes. Day (07:00–19:00) has a blue sky gradient, deeper at the top,
 lighter toward the horizon, blue sea, pale foam and a warm sun; the beam is off. Four broad, soft
@@ -91,7 +100,7 @@ Everything remains a two-dimensional big-pixel picture made from literal Rich Te
 | `m` | Menu: every screen, action and setting |
 | `↑` / `↓`, `Tab` | Previous/next row; next section |
 | `n` | Next item needing you |
-| `Enter` | Open PR detail; deployment opens its run; expand/collapse an alert |
+| `Enter` | Open PR detail; deployment opens its run; needs-you alert opens its item; other alerts expand/collapse |
 | `o`, `r` | Open the selected item on GitHub; check now |
 | `?`, `q` | Toggle key help; quit |
 | `t`, `c` (alert) | Run its named check through the Runner; copy a fix command when available |
