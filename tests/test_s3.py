@@ -470,7 +470,7 @@ class ScreenTests(IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertIn('restart required for live', contents(self.app))
             await pilot.click('#save')
-            await pilot.pause()
+            await wait_until(lambda: load_settings(self.root).repo('example/widget').post == 'live')  # saved on the worker queue
             self.assertEqual(load_settings(self.root).repo('example/widget').post, 'live')
             self.assertIn('restart required for live', contents(self.app))
 

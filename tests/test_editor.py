@@ -71,6 +71,7 @@ class EditorTests(unittest.IsolatedAsyncioTestCase):
             path = self.root / 'rules.md'
             self.assertTrue(path.read_text(encoding='utf-8').startswith('mq?123Review café'))
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            await wait_until(lambda: not self.app.worker.runner.commands.empty())  # wake is queued by the dismiss callback
             self.assertEqual(self.app.worker.runner.commands.get_nowait().kind, 'wake')
             self.assertIn('saved;', contents(self.app))
 
@@ -129,6 +130,7 @@ class EditorTests(unittest.IsolatedAsyncioTestCase):
                 await pilot.press('ctrl+e')
                 await wait_until(lambda: self.app.screen is not editor)
                 edit.assert_called_once_with(self.app, self.root / 'rules.md', nonempty_utf8, config_dir=self.root)
+            await wait_until(lambda: not self.app.worker.runner.commands.empty())  # wake is queued by the dismiss callback
             self.assertEqual(self.app.worker.runner.commands.get_nowait().kind, 'wake')
 
     async def test_real_worker_launch_blocks_textual_only_and_resumes_on_error(self):
