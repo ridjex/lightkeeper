@@ -82,6 +82,7 @@ class Check:
     conclusion: str   # "success", "failure", ... or "" while not completed
     details_url: str = ""
     required: bool = False
+    reported: bool = True  # False for declared required contexts absent from the head's rollup.
 
     @property
     def failed(self) -> bool:
@@ -152,6 +153,7 @@ class PullRequest:
     author_is_bot: bool = False
     changed_files: int | None = None   # GitHub's own count; the files API caps its listing at 3000
     comments: tuple[Comment, ...] = ()  # issue comments, oldest first; context only, not part of the fingerprint
+    declared_required_checks: tuple[str, ...] | None = ()  # None when the lookup failed.
 
     @property
     def fingerprint(self) -> str:

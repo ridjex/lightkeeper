@@ -3,6 +3,8 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-10-21 · **Missing declared checks wait; failed lookups use all checks.** Branch declarations cover checks that have not reported, while a once-per-head warning and the old all-checks gate keep lookup failures from blocking owner and recovery paths.
+
 - 2026-10-21 · **Wait for required checks only**, because GitHub's own readiness is the owner's declared policy; all three approval floors stay unchanged, including failed optional checks.
 
 - 2026-10-21 · **Needs-you is an alert, not a counter.** An item waiting for a human is the one thing the screen exists to show; a small counter and a row mark were overlooked for hours, an alert line, a reverse badge and an amber beam are not.

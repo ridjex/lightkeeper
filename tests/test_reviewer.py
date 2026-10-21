@@ -67,6 +67,21 @@ class PromptTests(unittest.TestCase):
             self.assertEqual(text.count("(no checks are required on this repository)"), 1)
             self.assertNotIn("(not required)", text)
 
+    def test_pr_prompt_marks_synthesized_required_check(self):
+        from lightkeeper.github import parse_pull_request
+        pr = parse_pull_request("org/repo", {"number": 7, "headRefOid": HEAD}, [], [], {}, ["external"])
+        text = build_pr_prompt(pr)
+        self.assertIn("- external: pending (required, not reported yet)", text)
+        self.assertNotIn("no checks are required", text)
+
+    def test_pr_prompt_does_not_claim_no_required_checks_when_lookup_failed(self):
+        text = build_pr_prompt(make_pr(checks=(), declared_required_checks=None))
+        self.assertNotIn("no checks are required", text)
+
+    def test_pr_prompt_respects_declared_list_without_required_rollup_flags(self):
+        text = build_pr_prompt(make_pr(checks=(), declared_required_checks=("external",)))
+        self.assertNotIn("no checks are required", text)
+
     def test_deploy_prompt_keeps_whole_logs_by_job_id(self):
         text = build_deploy_prompt(make_run(), "production", [PLAN_JOB, APPLY_JOB],
                                    {1: "noise\n" + PLAN_LOG_OK + "trailing\n"}, "main", "on: workflow_dispatch\n")

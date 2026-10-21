@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import subprocess
@@ -21,6 +22,7 @@ _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]+Z (.*)$")
 _STATUS_DONE = {"success", "failure", "error"}
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 STATUS_BATCH_SIZE = 50
+_logger = logging.getLogger("lightkeeper")
 _STATUS_FIELDS = """state headRefOid isDraft updatedAt author { login } title
   commits(last:1) { nodes { commit { statusCheckRollup { state contexts(first:1) {
     totalCount checkRunCountsByState { state count } statusContextCountsByState { state count }
@@ -28,6 +30,7 @@ _STATUS_FIELDS = """state headRefOid isDraft updatedAt author { login } title
 
 _REQUIRED_CHECKS_QUERY = """query($id:ID!) {
   node(id:$id) { ... on PullRequest {
+    baseRef { refUpdateRule { requiredStatusCheckContexts } }
     commits(last:1) { nodes { commit { oid statusCheckRollup { contexts(first:100) {
       pageInfo { hasNextPage }
       nodes {
@@ -134,7 +137,8 @@ class GhError(RuntimeError):
     @property
     def rate_limited(self) -> bool:
         return self.status == 429 or (self.status == 403 and
-                                     any(s in self.stderr.lower() for s in ("rate limit", "secondary")))
+                                     any(s in self.stderr.lower() for s in ("rate limit", "secondary"))) or (
+                                         self.status is None and "rate limit" in self.stderr.lower())
 
     @property
     def no_access(self) -> bool:
@@ -152,12 +156,18 @@ class GhTimeout(RuntimeError):
         super().__init__(f"{' '.join(self.command)} timed out after {timeout_s}s")
 
 
-def parse_required_checks(response: dict, head_sha: str) -> dict[str, bool]:
+def parse_required_checks(response: dict, head_sha: str) -> tuple[dict[str, bool], list[str]]:
     """Match names conservatively; incomplete or raced responses must never permit an early review."""
     try:
         if response.get("errors"):
             raise ValueError("GraphQL errors")
-        commits = response["data"]["node"]["commits"]["nodes"]
+        pr = response["data"]["node"]
+        base = pr["baseRef"]
+        rule = base.get("refUpdateRule") if base is not None else None
+        declared = rule["requiredStatusCheckContexts"] if rule is not None else []
+        if not isinstance(declared, list) or any(not isinstance(name, str) or not name for name in declared):
+            raise ValueError("invalid declared required-check contexts")
+        commits = pr["commits"]["nodes"]
         if not isinstance(commits, list) or len(commits) != 1:
             raise ValueError("missing head commit")
         commit = commits[0]["commit"]
@@ -165,7 +175,7 @@ def parse_required_checks(response: dict, head_sha: str) -> dict[str, bool]:
             raise ValueError("head changed during required-check lookup")
         rollup = commit["statusCheckRollup"]
         if rollup is None:
-            return {}
+            return {}, declared
         contexts = rollup["contexts"]
         # Do not silently classify checks beyond the first page as optional.
         if contexts["pageInfo"]["hasNextPage"] is not False:
@@ -180,13 +190,14 @@ def parse_required_checks(response: dict, head_sha: str) -> dict[str, bool]:
             if not isinstance(name, str) or not name or not isinstance(flag, bool):
                 raise ValueError("invalid required-check name or flag")
             required[name] = required.get(name, False) or flag
-        return required
+        return required, declared
     except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
         raise GhError(["api", "graphql"], 1, f"invalid required-check response: {exc}") from exc
 
 
 def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[dict],
-                       required_checks: dict[str, bool] | None = None) -> PullRequest:
+                       required_checks: dict[str, bool] | None = None,
+                       declared_checks: list[str] | None = None) -> PullRequest:
     owner = repo.split("/")[0]
     users, teams = [], []
     for rr in view.get("reviewRequests") or []:
@@ -205,7 +216,7 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
     for c in view.get("statusCheckRollup") or []:
         name = c.get("name") or c.get("context") or ""
         url = c.get("detailsUrl") or c.get("targetUrl") or ""
-        required = (required_checks or {}).get(name, False)
+        required = required_checks is None or required_checks.get(name, False) or name in (declared_checks or ())
         if "state" in c and "status" not in c:            # StatusContext (commit status)
             state = (c.get("state") or "").lower()
             done = state in _STATUS_DONE
@@ -213,6 +224,10 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
         else:                                              # CheckRun
             checks.append(Check(name, (c.get("status") or "").lower(), (c.get("conclusion") or "").lower(),
                                 url, required))
+    reported = {c.name for c in checks}
+    for name in dict.fromkeys(declared_checks or ()):
+        if name not in reported:
+            checks.append(Check(name, "pending", "", "", required=True, reported=False))
     comments = tuple(Comment((c.get("author") or {}).get("login", ""), c.get("body") or "")
                      for c in view.get("comments") or [])
     changed = tuple(
@@ -227,6 +242,7 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
         requested_users=tuple(users), requested_teams=tuple(teams), reviews=parsed_reviews, checks=tuple(checks),
         files=changed, author_is_bot=bool((view.get("author") or {}).get("is_bot")),
         changed_files=view.get("changedFiles"), comments=comments,
+        declared_required_checks=tuple(declared_checks) if declared_checks is not None else None,
     )
 
 
@@ -275,6 +291,7 @@ class Gh:
     def __init__(self, runner=subprocess.run, timeout_s: int = 60):
         self._runner = runner
         self.timeout_s = timeout_s
+        self._required_check_warnings: set[tuple[str, int, str]] = set()
 
     def run(self, args: list[str], *, timeout_s: int | None = None, errors: str = "strict", input: str | None = None) -> str:
         timeout = timeout_s or self.timeout_s
@@ -324,20 +341,25 @@ class Gh:
 
     def pull_request(self, repo: str, number: int) -> PullRequest:
         view = self.json(["pr", "view", str(number), "-R", repo, "--json", PR_VIEW_FIELDS])
+        required_checks, declared_checks = None, None
         try:
-            pr_id = view["id"]
-            if not isinstance(pr_id, str) or not pr_id:
-                raise ValueError("missing pull request node ID")
+            pr_id = view.get("id")
+            if not isinstance(pr_id, str) or not pr_id.strip():
+                raise ValueError("pr view: missing pull request node ID")
             response = self.json(["api", "graphql", "--input", "-"],
                                  input=json.dumps({"query": _REQUIRED_CHECKS_QUERY, "variables": {"id": pr_id}}))
-        except (KeyError, TypeError, ValueError) as exc:
-            raise GhError(["api", "graphql"], 1, f"invalid required-check response: {exc}") from exc
-        required_checks = parse_required_checks(response, view["headRefOid"])
+            required_checks, declared_checks = parse_required_checks(response, view["headRefOid"])
+        except (GhError, GhTimeout, KeyError, TypeError, ValueError) as exc:
+            key = repo, number, view["headRefOid"]
+            if key not in self._required_check_warnings:
+                self._required_check_warnings.add(key)
+                _logger.warning("%s#%s head=%s: required-check lookup failed; waiting for every check: %s",
+                                *key, " ".join(str(exc).split()))
         pages = self.json(["api", f"repos/{repo}/pulls/{number}/files?per_page=100", "--paginate", "--slurp"])
         files = [f for page in pages for f in page]
         pages = self.json(["api", f"repos/{repo}/pulls/{number}/reviews?per_page=100", "--paginate", "--slurp"])
         reviews = [r for page in pages for r in page]
-        return parse_pull_request(repo, view, files, reviews, required_checks)
+        return parse_pull_request(repo, view, files, reviews, required_checks, declared_checks)
 
     def pr_statuses(self, prs: list[tuple[str, int]], *, timeout_s: float = 15) -> list[PRStatus]:
         result = []

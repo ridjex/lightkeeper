@@ -1,6 +1,7 @@
 {
   "data": {
     "node": {
+      "baseRef": {"refUpdateRule": {"requiredStatusCheckContexts": ["pytest", "ci/legacy"]}},
       "commits": {
         "nodes": [
           {

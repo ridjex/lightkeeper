@@ -9,8 +9,10 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 ### Changed
 
 - Wait only for checks GitHub requires for the pull request; optional checks are labelled in model
-  context and PR detail. Failed checks of any kind still block automatic approval. Each full fetch adds
-  one GraphQL required-check query; lookup failures stop review visibly.
+  context and PR detail. Failed checks of any kind still block automatic approval. Declared required
+  contexts wait even before they report.
+  Each full fetch with a PR node ID adds one GraphQL required-check query; lookup failures fall back to
+  waiting for every check, as before, with one line in run.log per repository, pull request and head.
 
 ## [0.1.7] — 2026-10-21
 

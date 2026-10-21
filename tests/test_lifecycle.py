@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from lightkeeper.__main__ import REVIEWER_PAUSE_S, Runner
-from lightkeeper.github import GhError, GhTimeout
+from lightkeeper.github import Gh, GhError, GhTimeout
 from lightkeeper.journal import Journal
 from lightkeeper.models import Check, Decision, MARKER, PendingEnvironment, Review, marker_line
 from lightkeeper.reviewer import ReviewerError, UnclearAnswer
@@ -303,17 +303,45 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(self.notified, ["org/repo#7: checks still running after 3 h; open it and decide"])
 
-    def test_optional_running_check_reviews_after_long_required_wait_without_ci_alert(self):
+    def test_unreported_required_context_defers_while_optional_check_runs(self):
         from lightkeeper.__main__ import CI_WAIT_MAX_S
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("slow", "in_progress", "", required=True),))]
-        reviewer = FakeReviewer([APPROVE])
+        view = {"id": "PR_7", "number": 7, "headRefOid": HEAD, "state": "OPEN",
+                "reviewRequests": [{"login": "me"}],
+                "statusCheckRollup": [{"name": "optional", "status": "IN_PROGRESS"}]}
+        response = {"data": {"node": {
+            "baseRef": {"refUpdateRule": {"requiredStatusCheckContexts": ["external"]}},
+            "commits": {"nodes": [{"commit": {"oid": HEAD, "statusCheckRollup": {"contexts": {
+                "pageInfo": {"hasNextPage": False},
+                "nodes": [{"__typename": "CheckRun", "name": "optional", "isRequired": False}]
+            }}}}]}
+        }}}
+        gh = Gh(runner=Mock(side_effect=AssertionError("no subprocesses")))
+        gh.json = Mock(side_effect=[view, response, [[]], [[]]])
+        self.gh.pr_snapshots[("org/repo", 7)] = [gh.pull_request("org/repo", 7)]
+        reviewer = FakeReviewer([])
         r = self.runner(reviewer=reviewer)
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
+        self.assertIn(("defer", "checks still running: external"), self.events())
         self.now = __import__("time").time() + CI_WAIT_MAX_S + 60
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("slow", "in_progress", ""),))]
-        self.assertEqual(r.process_pr("org/repo", 7), "applied")
-        self.assertEqual(reviewer.calls, 1)
-        self.assertFalse(any("checks still running" in text for text in self.notified))
+        self.assertEqual(r.process_pr("org/repo", 7), "defer")
+        self.assertEqual(self.notified, ["org/repo#7: checks still running after 3 h; open it and decide"])
+        self.assertEqual((reviewer.calls, self.gh.writes), (0, []))
+
+    def test_failed_required_lookup_defers_all_running_checks_and_logs(self):
+        view = {"id": "PR_7", "number": 7, "headRefOid": HEAD, "state": "OPEN",
+                "reviewRequests": [{"login": "me"}],
+                "statusCheckRollup": [{"name": "optional", "status": "IN_PROGRESS"}]}
+        gh = Gh(runner=Mock(side_effect=AssertionError("no subprocesses")))
+        gh.json = Mock(side_effect=[view, GhError(["api", "graphql"], 1, "lookup failed"), [[]], [[]]])
+        self.gh.pull_request = gh.pull_request
+        reviewer = FakeReviewer([])
+        r = self.runner(reviewer=reviewer)
+        with self.assertLogs("lightkeeper", "WARNING") as logs:
+            self.assertEqual(r.process_pr("org/repo", 7), "defer")
+        self.assertIn(("defer", "checks still running: optional"), self.events())
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("required-check lookup failed; waiting for every check", logs.output[0])
+        self.assertEqual((reviewer.calls, self.gh.writes), (0, []))
 
     def test_dry_run_notifications_are_marked(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]

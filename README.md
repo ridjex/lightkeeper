@@ -129,10 +129,12 @@ Between full checks, light polls refresh author/title/CI every 15 s and wake a f
 a state or draft change, when all checks finish or when a check fails. Failed ticks keep their normal
 delay; light-poll errors retry at 30 s, then 60 s. `--once` skips light polls. API budget: light polls cost
 about 240 GraphQL points per hour per batch of up to 50 watched pull requests, plus full checks; each
-early wake adds a full tick of about four calls per watched pull request. Each full fetch adds one
-GraphQL required-check query (normally one point) to the view, files and reviews calls. It reads up to
-100 check contexts; a failed, malformed, truncated or head-raced response fails visibly instead of
-reviewing early. Required flags are matched by check name; an unlisted name is treated as optional.
+early wake adds a full tick of about four calls per watched pull request. Each full fetch with a PR node ID
+adds one GraphQL required-check query (normally one point) to the view, files and reviews calls. It reads the base
+branch’s declared required contexts and up to 100 reported check contexts. Declared contexts that have
+not reported yet stay pending; required flags and declarations are matched by check name. A failed,
+malformed, truncated or head-raced lookup (or a missing PR node ID) falls back to waiting for every
+check, as before, with one line in run.log per repository, pull request and head.
 
 Deployments waiting for your approval (found through your GitHub notifications) are judged from the
 workflow, every job and the logs before the gate; the model answers `approve | ignore`.

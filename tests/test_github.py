@@ -36,10 +36,11 @@ class ParseTests(unittest.TestCase):
 
     def test_required_flags_match_both_context_types_and_missing_name_is_optional(self):
         view = load("pr_view.json")
-        flags = parse_required_checks(load("pr_required_checks.json"), view["headRefOid"])
+        flags, declared = parse_required_checks(load("pr_required_checks.json"), view["headRefOid"])
         self.assertEqual(flags, {"pytest": True, "lint": False, "ci/legacy": True})
+        self.assertEqual(declared, ["pytest", "ci/legacy"])
         view["statusCheckRollup"].append({"name": "unlisted", "status": "IN_PROGRESS"})
-        pr = parse_pull_request("org/repo", view, [], [], flags)
+        pr = parse_pull_request("org/repo", view, [], [], flags, declared)
         self.assertEqual({c.name: c.required for c in pr.checks}, {**flags, "unlisted": False})
 
     def test_required_query_rejects_malformed_partial_and_raced_responses(self):
@@ -82,11 +83,49 @@ class ParseTests(unittest.TestCase):
         commit = response["data"]["node"]["commits"]["nodes"][0]["commit"]
         contexts = commit["statusCheckRollup"]["contexts"]
         contexts["nodes"].append({"__typename": "CheckRun", "name": "pytest", "isRequired": False})
-        self.assertTrue(parse_required_checks(response, commit["oid"])["pytest"])
+        self.assertTrue(parse_required_checks(response, commit["oid"])[0]["pytest"])
         contexts["nodes"] = []
-        self.assertEqual(parse_required_checks(response, commit["oid"]), {})
+        self.assertEqual(parse_required_checks(response, commit["oid"]), ({}, ["pytest", "ci/legacy"]))
         commit["statusCheckRollup"] = None
-        self.assertEqual(parse_required_checks(response, commit["oid"]), {})
+        self.assertEqual(parse_required_checks(response, commit["oid"]), ({}, ["pytest", "ci/legacy"]))
+
+    def test_required_declarations_accept_no_rule(self):
+        for base in ({"refUpdateRule": None}, {}, None):
+            response = load("pr_required_checks.json")
+            response["data"]["node"]["baseRef"] = base
+            with self.subTest(base=base):
+                flags, declared = parse_required_checks(response, load("pr_view.json")["headRefOid"])
+                self.assertEqual(declared, [])
+                self.assertTrue(flags["pytest"])
+
+    def test_required_declarations_reject_malformed_lists(self):
+        for declared in (None, "pytest", [None], [""], [1]):
+            response = load("pr_required_checks.json")
+            response["data"]["node"]["baseRef"]["refUpdateRule"]["requiredStatusCheckContexts"] = declared
+            with self.subTest(declared=declared), self.assertRaises(GhError):
+                parse_required_checks(response, load("pr_view.json")["headRefOid"])
+
+    def test_declared_context_overrides_optional_flag_and_missing_context_is_pending(self):
+        from lightkeeper.models import Check
+        view = load("pr_view.json")
+        response = load("pr_required_checks.json")
+        response["data"]["node"]["baseRef"]["refUpdateRule"]["requiredStatusCheckContexts"] = ["lint", "external", "external"]
+        flags, declared = parse_required_checks(response, view["headRefOid"])
+        pr = parse_pull_request("org/repo", view, [], [], flags, declared)
+        self.assertEqual([c.name for c in pr.checks], ["pytest", "lint", "ci/legacy", "external"])
+        self.assertTrue(all(c.required for c in pr.checks))
+        self.assertTrue(all(c.reported for c in pr.checks[:-1]))
+        self.assertEqual(pr.checks[-1], Check("external", "pending", "", "", required=True, reported=False))
+
+    def test_declared_contexts_wait_with_null_rollup(self):
+        view = load("pr_view.json")
+        view["statusCheckRollup"] = None
+        response = load("pr_required_checks.json")
+        response["data"]["node"]["commits"]["nodes"][0]["commit"]["statusCheckRollup"] = None
+        flags, declared = parse_required_checks(response, view["headRefOid"])
+        pr = parse_pull_request("org/repo", view, [], [], flags, declared)
+        self.assertEqual([c.name for c in pr.checks], declared)
+        self.assertTrue(all(c.required and not c.reported and c.status == "pending" for c in pr.checks))
 
     def test_parse_runs_uses_workflow_basename(self):
         runs = parse_runs("org/repo", [{"id": 1, "run_attempt": 2, "path": ".github/workflows/infra-apply.yml",
@@ -150,6 +189,7 @@ class GhTests(unittest.TestCase):
         payload = json.loads(call.kwargs["input"])
         self.assertEqual(payload["variables"], {"id": "PR_42"})
         self.assertIn("node(id:$id)", payload["query"])
+        self.assertIn("baseRef { refUpdateRule { requiredStatusCheckContexts } }", payload["query"])
         self.assertEqual(payload["query"].count("isRequired(pullRequestId:$id)"), 2)
         self.assertEqual([c.required for c in pr.checks], [True, False, True])
         self.assertEqual(len(pr.reviews), 150)
@@ -159,19 +199,66 @@ class GhTests(unittest.TestCase):
         self.assertEqual(runner.call_args_list[-1].args[0],
                          ["gh", "api", "repos/org/repo/pulls/42/reviews?per_page=100", "--paginate", "--slurp"])
 
-    def test_required_query_failure_never_returns_a_pull_request(self):
+    def test_required_lookup_failures_fall_back_to_all_required(self):
+        extra_page = load("pr_required_checks.json")
+        extra_page["data"]["node"]["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]["pageInfo"]["hasNextPage"] = True
+        raced = load("pr_required_checks.json")
+        raced["data"]["node"]["commits"]["nodes"][0]["commit"]["oid"] = "new head"
+        errors = {"errors": [{"message": "lookup failed"}]}
         for result in (subprocess.CompletedProcess([], 1, "", "HTTP 502"),
+                       subprocess.CompletedProcess([], 1, "", "GraphQL: API rate limit exceeded"),
+                       subprocess.TimeoutExpired(["gh", "api", "graphql"], 60),
                        subprocess.CompletedProcess([], 0, "not json", ""),
-                       subprocess.CompletedProcess([], 0, "{}", "")):
+                       *(subprocess.CompletedProcess([], 0, json.dumps(data), "")
+                         for data in ({}, errors, extra_page, raced))):
             runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, json.dumps(load("pr_view.json")), ""),
-                                       result])
-            with self.subTest(result=result), self.assertRaises(GhError):
-                Gh(runner=runner).pull_request("org/repo", 42)
-            self.assertEqual(runner.call_count, 2)
+                                       result, subprocess.CompletedProcess([], 0, "[[]]", ""),
+                                       subprocess.CompletedProcess([], 0, "[[]]", "")])
+            with self.subTest(result=result), self.assertLogs("lightkeeper", "WARNING") as logs:
+                pr = Gh(runner=runner).pull_request("org/repo", 42)
+            self.assertTrue(all(c.required for c in pr.checks))
+            self.assertIsNone(pr.declared_required_checks)
+            self.assertEqual(len(logs.output), 1)
+            self.assertIn("org/repo#42", logs.output[0])
+            self.assertIn(pr.head_sha, logs.output[0])
+            self.assertIn("waiting for every check", logs.output[0])
+            self.assertEqual(runner.call_count, 4)
+
+    def test_missing_pr_view_id_falls_back_without_graphql(self):
+        for value in (None, "", " "):
+            view = load("pr_view.json")
+            if value is None:
+                del view["id"]
+            else:
+                view["id"] = value
+            gh = Gh(runner=Mock(side_effect=AssertionError("no subprocesses")))
+            gh.json = Mock(side_effect=[view, [[]], [[]]])
+            with self.subTest(value=value), self.assertLogs("lightkeeper", "WARNING") as logs:
+                pr = gh.pull_request("org/repo", 42)
+            self.assertTrue(all(c.required for c in pr.checks))
+            self.assertEqual(gh.json.call_count, 3)
+            self.assertEqual(len(logs.output), 1)
+            self.assertIn("pr view: missing pull request node ID", logs.output[0])
+            self.assertNotIn("api graphql", logs.output[0])
+
+    def test_required_lookup_warning_once_per_repo_number_and_head(self):
+        gh = Gh(runner=Mock(side_effect=AssertionError("no subprocesses")))
+        calls = [("org/repo", 42, "a"), ("org/repo", 42, "a"), ("org/repo", 42, "b"),
+                 ("org/repo", 43, "a"), ("other/repo", 42, "a"), ("org/repo", 42, "a")]
+        with self.assertLogs("lightkeeper", "WARNING") as logs:
+            for repo, number, head in calls:
+                view = {**load("pr_view.json"), "headRefOid": head}
+                gh.json = Mock(side_effect=[view, GhError(["api", "graphql"], 1, "lookup\nfailed"), [[]], [[]]])
+                gh.pull_request(repo, number)
+        self.assertEqual(len(logs.output), 4)
+        self.assertTrue(all("\n" not in line for line in logs.output))
 
     def test_throttling_classification(self):
         for message, limited, no_access in (
                 ("HTTP 429", True, False),
+                ("GraphQL: API rate limit exceeded", True, False),
+                ("GraphQL: API RATE LIMIT exceeded", True, False),
+                ("GraphQL: other error", False, False),
                 ("HTTP 403: API rate limit exceeded", True, False),
                 ("HTTP 403: Secondary throttling", True, False),
                 ("HTTP 403: Forbidden", False, True),

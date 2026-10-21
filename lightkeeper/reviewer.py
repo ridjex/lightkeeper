@@ -161,12 +161,13 @@ def _clip(text: str, limit: int) -> str:
 
 
 def build_pr_prompt(pr: PullRequest, failed_logs: list[tuple[Check, str]] = ()) -> str:
-    any_required = any(c.required for c in pr.checks)
+    any_required = bool(pr.declared_required_checks) or any(c.required for c in pr.checks)
     checks = "\n".join(f"- {c.name}: {c.conclusion or c.status}"
-                       + (" (not required)" if any_required and not c.required else "")
+                       + (" (required, not reported yet)" if not c.reported else
+                          " (not required)" if any_required and not c.required else "")
                        + (f" — {c.details_url}" if c.details_url else "")
                        for c in pr.checks) or "- (no checks ran on this head)"
-    if not any_required:
+    if pr.declared_required_checks == () and not any_required:
         checks += "\n(no checks are required on this repository)"
     author = f"{pr.author} (bot account)" if pr.author_is_bot else f"{pr.author} (user account)"
     files = "\n".join(
