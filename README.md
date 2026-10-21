@@ -114,7 +114,9 @@ and start it again. Configuration, journal and sessions are never touched by an 
 ## How it decides
 
 Every minute: for each repository in your `settings.toml`, find the open pull requests where you are a
-requested reviewer, plus the ones the tool already watches. Drafts and running checks wait. For the rest,
+requested reviewer, plus the ones the tool already watches. Drafts wait; checks that GitHub requires for
+the pull request wait. Optional checks are shown to the model as running or not required and never block
+review, except that a failed check of any kind still blocks an approve. For the rest,
 the model gets the description, the diff, every check with its link, the tail of each failed job's log,
 the earlier comments and reviews, and your `rules.md`; it answers one of
 `approve | request_changes | comment | nothing`, public `why` and `watch`, a summary and findings,
@@ -127,7 +129,10 @@ Between full checks, light polls refresh author/title/CI every 15 s and wake a f
 a state or draft change, when all checks finish or when a check fails. Failed ticks keep their normal
 delay; light-poll errors retry at 30 s, then 60 s. `--once` skips light polls. API budget: light polls cost
 about 240 GraphQL points per hour per batch of up to 50 watched pull requests, plus full checks; each
-early wake adds a full tick of about three calls per watched pull request.
+early wake adds a full tick of about four calls per watched pull request. Each full fetch adds one
+GraphQL required-check query (normally one point) to the view, files and reviews calls. It reads up to
+100 check contexts; a failed, malformed, truncated or head-raced response fails visibly instead of
+reviewing early. Required flags are matched by check name; an unlisted name is treated as optional.
 
 Deployments waiting for your approval (found through your GitHub notifications) are judged from the
 workflow, every job and the logs before the gate; the model answers `approve | ignore`.
@@ -160,7 +165,7 @@ highlights its header badge and turns the lighthouse beam amber until you decide
   Failed lookups retry twice with short pauses (a rate-limited answer is not retried) and defer writes if all
   attempts fail; three consecutive failed checks raise an error alert. A mismatch stops and alerts immediately. A matching check clears
   the alert; the header retains the last known login as unconfirmed during transient lookup failures.
-- Checks still running after 3 hours → one notification, no approval. A context too large to send → no
+- Required checks still running after 3 hours → one notification, no approval. A context too large to send → no
   approval, one notification.
 
 ## Comments

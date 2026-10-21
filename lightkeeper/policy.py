@@ -111,7 +111,7 @@ def evaluate_pr(pr: PullRequest, policy) -> Decision:
         return Decision("defer", "no longer requested", "readiness")     # removed before any review; a re-request resumes
     if pr.is_draft:
         return Decision("defer", "draft", "readiness")          # becomes eligible when marked ready
-    pending = [c.name for c in pr.checks if c.status != "completed"]
+    pending = [c.name for c in pr.checks if c.status != "completed" and c.required]
     if pending:
         return Decision("defer", f"checks still running: {', '.join(pending[:3])}", "readiness")
     if not pr.files:

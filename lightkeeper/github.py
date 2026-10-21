@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from .models import CICounts, ChangedFile, Check, Comment, Job, PendingEnvironment, PullRequest, Review, WorkflowRun
 from .policy import approve_floor
 
-PR_VIEW_FIELDS = ("number,state,isDraft,headRefOid,baseRefName,author,title,body,reviewRequests,"
+PR_VIEW_FIELDS = ("id,number,state,isDraft,headRefOid,baseRefName,author,title,body,reviewRequests,"
                   "statusCheckRollup,changedFiles,comments")
 REVIEW_EVENTS = {"approve": "APPROVE", "request_changes": "REQUEST_CHANGES", "comment": "COMMENT"}
 LOG_TAIL_LINES = 120
@@ -25,6 +25,19 @@ _STATUS_FIELDS = """state headRefOid isDraft updatedAt author { login } title
   commits(last:1) { nodes { commit { statusCheckRollup { state contexts(first:1) {
     totalCount checkRunCountsByState { state count } statusContextCountsByState { state count }
   } } } } }"""
+
+_REQUIRED_CHECKS_QUERY = """query($id:ID!) {
+  node(id:$id) { ... on PullRequest {
+    commits(last:1) { nodes { commit { oid statusCheckRollup { contexts(first:100) {
+      pageInfo { hasNextPage }
+      nodes {
+        __typename
+        ... on CheckRun { name isRequired(pullRequestId:$id) }
+        ... on StatusContext { context isRequired(pullRequestId:$id) }
+      }
+    } } } } }
+  } }
+}"""
 
 
 @dataclass(frozen=True)
@@ -46,11 +59,12 @@ class PRStatus:
     requested_reviewers: tuple[str, ...] | None = None
     head_pushed_at: str = ""  # Only an actual push timestamp; never PR updated_at.
     failed_check_links: tuple[tuple[str, str], ...] = ()
+    optional_checks: tuple[str, ...] = ()
 
     @property
     def wake_key(self):
         """What is worth a full check now. Progress of running checks is shown but does not wake the loop:
-        the PR waits for them anyway, and a full check costs ~3 calls per watched PR."""
+        required checks gate review; the minute tick still runs. A full fetch costs ~4 calls per watched PR."""
         return self.state, self.head, self.is_draft, self.ci.running == 0, self.ci.failed
 
     @classmethod
@@ -62,7 +76,8 @@ class PRStatus:
                    failed_checks=tuple(c.name for c in pr.checks if c.failed),
                    approve_refusal=approve_floor(pr) or "", base_ref=pr.base_ref,
                    requested_reviewers=(*pr.requested_users, *pr.requested_teams),
-                   failed_check_links=tuple((c.name, c.details_url) for c in pr.checks if c.failed))
+                   failed_check_links=tuple((c.name, c.details_url) for c in pr.checks if c.failed),
+                   optional_checks=tuple(c.name for c in pr.checks if not c.required))
 
 
 def parse_pr_statuses(response: dict, prs: list[tuple[str, int]]) -> list[PRStatus]:
@@ -137,7 +152,41 @@ class GhTimeout(RuntimeError):
         super().__init__(f"{' '.join(self.command)} timed out after {timeout_s}s")
 
 
-def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[dict]) -> PullRequest:
+def parse_required_checks(response: dict, head_sha: str) -> dict[str, bool]:
+    """Match names conservatively; incomplete or raced responses must never permit an early review."""
+    try:
+        if response.get("errors"):
+            raise ValueError("GraphQL errors")
+        commits = response["data"]["node"]["commits"]["nodes"]
+        if not isinstance(commits, list) or len(commits) != 1:
+            raise ValueError("missing head commit")
+        commit = commits[0]["commit"]
+        if commit["oid"] != head_sha:
+            raise ValueError("head changed during required-check lookup")
+        rollup = commit["statusCheckRollup"]
+        if rollup is None:
+            return {}
+        contexts = rollup["contexts"]
+        # Do not silently classify checks beyond the first page as optional.
+        if contexts["pageInfo"]["hasNextPage"] is not False:
+            raise ValueError("required-check contexts exceed one page or page info is malformed")
+        nodes = contexts["nodes"]
+        if not isinstance(nodes, list):
+            raise ValueError("missing check contexts")
+        required = {}
+        for node in nodes:
+            field = {"CheckRun": "name", "StatusContext": "context"}[node["__typename"]]
+            name, flag = node[field], node["isRequired"]
+            if not isinstance(name, str) or not name or not isinstance(flag, bool):
+                raise ValueError("invalid required-check name or flag")
+            required[name] = required.get(name, False) or flag
+        return required
+    except (AttributeError, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise GhError(["api", "graphql"], 1, f"invalid required-check response: {exc}") from exc
+
+
+def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[dict],
+                       required_checks: dict[str, bool] | None = None) -> PullRequest:
     owner = repo.split("/")[0]
     users, teams = [], []
     for rr in view.get("reviewRequests") or []:
@@ -156,12 +205,14 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
     for c in view.get("statusCheckRollup") or []:
         name = c.get("name") or c.get("context") or ""
         url = c.get("detailsUrl") or c.get("targetUrl") or ""
+        required = (required_checks or {}).get(name, False)
         if "state" in c and "status" not in c:            # StatusContext (commit status)
             state = (c.get("state") or "").lower()
             done = state in _STATUS_DONE
-            checks.append(Check(name, "completed" if done else "pending", state if done else "", url))
+            checks.append(Check(name, "completed" if done else "pending", state if done else "", url, required))
         else:                                              # CheckRun
-            checks.append(Check(name, (c.get("status") or "").lower(), (c.get("conclusion") or "").lower(), url))
+            checks.append(Check(name, (c.get("status") or "").lower(), (c.get("conclusion") or "").lower(),
+                                url, required))
     comments = tuple(Comment((c.get("author") or {}).get("login", ""), c.get("body") or "")
                      for c in view.get("comments") or [])
     changed = tuple(
@@ -273,11 +324,20 @@ class Gh:
 
     def pull_request(self, repo: str, number: int) -> PullRequest:
         view = self.json(["pr", "view", str(number), "-R", repo, "--json", PR_VIEW_FIELDS])
+        try:
+            pr_id = view["id"]
+            if not isinstance(pr_id, str) or not pr_id:
+                raise ValueError("missing pull request node ID")
+            response = self.json(["api", "graphql", "--input", "-"],
+                                 input=json.dumps({"query": _REQUIRED_CHECKS_QUERY, "variables": {"id": pr_id}}))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GhError(["api", "graphql"], 1, f"invalid required-check response: {exc}") from exc
+        required_checks = parse_required_checks(response, view["headRefOid"])
         pages = self.json(["api", f"repos/{repo}/pulls/{number}/files?per_page=100", "--paginate", "--slurp"])
         files = [f for page in pages for f in page]
         pages = self.json(["api", f"repos/{repo}/pulls/{number}/reviews?per_page=100", "--paginate", "--slurp"])
         reviews = [r for page in pages for r in page]
-        return parse_pull_request(repo, view, files, reviews)
+        return parse_pull_request(repo, view, files, reviews, required_checks)
 
     def pr_statuses(self, prs: list[tuple[str, int]], *, timeout_s: float = 15) -> list[PRStatus]:
         result = []

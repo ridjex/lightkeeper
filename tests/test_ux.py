@@ -89,14 +89,17 @@ class UXDataTests(TestCase):
         projection = Projection()
         status = PRStatus.from_pr(make_pr(checks=(Check('unit', 'completed', 'failure', 'https://example.test/ci'),)))
         projection.pr_status(status)
-        light = replace(status, failed_checks=None, failed_check_links=(), base_ref='', requested_reviewers=None)
+        light = replace(status, failed_checks=None, failed_check_links=(), optional_checks=(),
+                        base_ref='', requested_reviewers=None)
         projection.pr_status(light)
         detail = projection.screen(Runtime(), NOW).details[('org/repo', 7, HEAD)]
+        self.assertEqual(detail.optional_checks, ('unit',))
         self.assertEqual(detail.base_ref, 'main')
         self.assertEqual(detail.requested_reviewers, status.requested_reviewers)
         self.assertEqual(detail.failed_check_links, (('unit', 'https://example.test/ci'),))
         projection.pr_status(replace(light, head='b' * 40))
         moved = projection.screen(Runtime(), NOW).details[('org/repo', 7, 'b' * 40)]
+        self.assertEqual(moved.optional_checks, ())
         self.assertEqual(moved.base_ref, '')
         self.assertIsNone(moved.requested_reviewers)
         self.assertEqual(moved.failed_check_links, ())
@@ -1014,6 +1017,7 @@ class UXPilots(IsolatedAsyncioTestCase):
             value, _ = self.screenshot(app, 'detail-fixture')
             for expected in ('base release', 'reviewers reviewer, org/maintainers', 'pushed 3m ago',
                              'Status', 'next step final', '7 passed · 1 failed: pytest (https://example.test/check/1)',
+                             'pytest (not required)',
                              'Assessment', 'Not approving yet: [bold]input[/] needs validation.',
                              'Check the retry path in src/parser.py.', 'important · diff · Validate [bold]input[/]. · src/parser.py · https://example.test/finding',
                              'public summary Check the input boundary.', 'private · journal only', 'A private explanation.',

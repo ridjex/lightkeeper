@@ -251,6 +251,7 @@ class PRDetail(Screen):
             snapshot, self.app.clock(), self.size.width, self.app.ascii, self.app.queued_text(snapshot)))
         ci = detail.ci if detail and detail.ci is not None else getattr(row, "ci", None)
         links = detail.failed_check_links if detail else ()
+        optional = detail.optional_checks if detail else ()
         failed = ", ".join(name + (f" ({url})" if url else "") for name, url in links) if links else ", ".join(
             getattr(row, "failed_checks", ()))
         counts = " · ".join(f"{n} {label}" for n, label in (
@@ -258,6 +259,8 @@ class PRDetail(Screen):
             (ci.failed, "failed" + (f": {failed}" if failed else "")), (ci.other, "other")) if n) if ci else ""
         if not counts:
             counts = "no checks" if ci is not None or row.state in ("closed", "merged") else "CI unavailable"
+        if optional:
+            counts += "\n" + ", ".join(f"{name} (not required)" for name in optional)
         private = detail.latest_private_reason if detail else next(
             (e.private_reason for e in reversed(events) if e.private_reason), "")
         summary = detail.latest_summary if detail else next((e.summary for e in reversed(events) if e.summary), "")
@@ -278,8 +281,10 @@ class PRDetail(Screen):
         elif row.state == "withheld" or runtime.policy_error or any(
                 a.key in ("gh_identity", "settings_error") and a.level == "error" for a in snapshot.alerts):
             next_step = "needs you"
-        elif row.state == "waiting" and (getattr(row, "is_draft", False) or (ci and ci.running) or "checks" in row.why):
-            next_step = "waits for checks"
+        elif row.state == "waiting" and getattr(row, "is_draft", False):
+            next_step = "waits for draft to be ready"
+        elif row.state == "waiting" and row.why.startswith("checks still running"):
+            next_step = "waits for required checks"
         elif row.state in ("waiting", "reviewing"):
             next_step = "reviewing" if row.state == "reviewing" else "next check"
         else:

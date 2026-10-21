@@ -4,6 +4,14 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-10-21
+
+### Changed
+
+- Wait only for checks GitHub requires for the pull request; optional checks are labelled in model
+  context and PR detail. Failed checks of any kind still block automatic approval. Each full fetch adds
+  one GraphQL required-check query; lookup failures stop review visibly.
+
 ## [0.1.7] — 2026-10-21
 
 ### Changed

@@ -101,9 +101,24 @@ class EligibilityTests(unittest.TestCase):
         self.assertEqual(approve_floor(make_pr(files=(make_file("logo.png", 0, 0, status="added", patch=None),))),
                          "patch not visible: logo.png")
 
-    def test_checks_must_be_finished(self):
-        d = evaluate_pr(make_pr(checks=(Check("tests", "in_progress", ""),)), self.policy)
+    def test_required_checks_must_be_finished(self):
+        d = evaluate_pr(make_pr(checks=(Check("tests", "in_progress", "", required=True),)), self.policy)
         self.assertEqual((d.outcome, d.source, d.reason), ("defer", "readiness", "checks still running: tests"))
+
+    def test_optional_pending_checks_do_not_defer(self):
+        self.assertEqual(self.outcome(make_pr(checks=(Check("slow", "in_progress", ""),))), "review")
+        self.assertEqual(self.outcome(make_pr(checks=())), "review")
+
+    def test_mixed_pending_checks_name_only_required_ones(self):
+        checks = (Check("slow", "in_progress", ""), Check("unit", "queued", "", required=True),
+                  Check("legacy", "pending", "", required=True), Check("ok", "completed", "success", required=True))
+        decision = evaluate_pr(make_pr(checks=checks), self.policy)
+        self.assertEqual((decision.outcome, decision.reason), ("defer", "checks still running: unit, legacy"))
+
+    def test_optional_failed_check_still_blocks_approve(self):
+        pr = make_pr(checks=(Check("optional", "completed", "failure", required=False),))
+        self.assertEqual(self.outcome(pr), "review")
+        self.assertEqual(approve_floor(pr), "failed check: optional")
 
     def test_file_list_must_match_github_count(self):
         self.assertEqual(self.outcome(make_pr(changed_files=1)), "review")

@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 from lightkeeper.models import Check, ChangedFile, PullRequest, Review, is_automated, marker_line
 
@@ -21,6 +22,11 @@ class ChangedFileTests(unittest.TestCase):
         self.assertTrue(f.is_complete)
 
 class PullRequestTests(unittest.TestCase):
+    def test_fingerprint_ignores_required_flag(self):
+        check = Check("unit", "in_progress", "")
+        pr = replace(_pr([]), checks=(check,))
+        self.assertEqual(pr.fingerprint, replace(pr, checks=(replace(check, required=True),)).fingerprint)
+
     def test_fingerprint_counts_others_reviews_and_check_links_but_not_own_reviews(self):
         base = _pr([ChangedFile("a.py", None, "modified", 1, 1, "@@")])
         teammate = PullRequest(**{**base.__dict__, "reviews": (Review("bob", "CHANGES_REQUESTED", "a" * 40, "no"),)})

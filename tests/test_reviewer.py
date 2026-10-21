@@ -53,6 +53,20 @@ class PromptTests(unittest.TestCase):
         self.assertIn("(no checks ran on this head)", text)
         self.assertNotIn("## Logs of failed checks", text)
 
+    def test_pr_prompt_labels_optional_checks_when_some_are_required(self):
+        pr = make_pr(checks=(Check("unit", "completed", "success", required=True),
+                             Check("slow", "in_progress", "")))
+        text = build_pr_prompt(pr)
+        self.assertIn("- unit: success\n", text)
+        self.assertIn("- slow: in_progress (not required)", text)
+        self.assertNotIn("no checks are required", text)
+
+    def test_pr_prompt_notes_once_when_no_checks_are_required(self):
+        for checks in ((), (Check("slow", "in_progress", ""), Check("legacy", "pending", ""))):
+            text = build_pr_prompt(make_pr(checks=checks))
+            self.assertEqual(text.count("(no checks are required on this repository)"), 1)
+            self.assertNotIn("(not required)", text)
+
     def test_deploy_prompt_keeps_whole_logs_by_job_id(self):
         text = build_deploy_prompt(make_run(), "production", [PLAN_JOB, APPLY_JOB],
                                    {1: "noise\n" + PLAN_LOG_OK + "trailing\n"}, "main", "on: workflow_dispatch\n")

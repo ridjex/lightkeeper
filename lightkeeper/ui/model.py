@@ -151,6 +151,7 @@ class DetailState:
     requested_reviewers: tuple[str, ...] | None = None
     head_pushed_at: str = ""
     failed_check_links: tuple[tuple[str, str], ...] = ()
+    optional_checks: tuple[str, ...] = ()
     ci: CICounts | None = None
     is_draft: bool = False
 

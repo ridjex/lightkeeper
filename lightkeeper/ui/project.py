@@ -220,7 +220,7 @@ class Projection:
                              floor_stale=False, floor_counts=status.counts,
                              base_ref=status.base_ref, requested_reviewers=status.requested_reviewers,
                              head_pushed_at=status.head_pushed_at or detail.head_pushed_at,
-                             failed_check_links=status.failed_check_links)
+                             failed_check_links=status.failed_check_links, optional_checks=status.optional_checks)
         else:
             full = self._full_statuses.get(identity)
             stale = not full or full.head != status.head or full.counts != status.counts
@@ -229,7 +229,7 @@ class Projection:
                 status = replace(status, approve_refusal=full.approve_refusal,
                                  failed_checks=full.failed_checks if not stale else None)
             if stale:
-                detail = replace(detail, failed_check_links=())
+                detail = replace(detail, failed_check_links=(), optional_checks=())
         detail = replace(detail, ci=status.ci, is_draft=status.is_draft,
                          head_pushed_at=status.head_pushed_at or detail.head_pushed_at)
         self._statuses[identity] = status

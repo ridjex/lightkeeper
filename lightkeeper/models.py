@@ -81,6 +81,7 @@ class Check:
     status: str       # "completed" or a pending state (queued, in_progress, pending)
     conclusion: str   # "success", "failure", ... or "" while not completed
     details_url: str = ""
+    required: bool = False
 
     @property
     def failed(self) -> bool:

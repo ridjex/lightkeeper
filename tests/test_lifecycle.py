@@ -259,7 +259,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual((reviewer.calls, self.gh.writes), (0, []))
 
     def test_closed_pr_is_forgotten(self):
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", ""),))]
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", "", required=True),))]
         r = self.runner(reviewer=FakeReviewer([]))
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(self.journal.watched_prs(), [("org/repo", 7)])
@@ -270,7 +270,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual([e for e, _ in self.events()], ["seen", "defer", "closed"])     # closed is journaled once
 
     def test_tick_includes_watched_prs_not_in_search(self):
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", ""),))]
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", "", required=True),))]
         r = self.runner(reviewer=FakeReviewer([APPROVE]))
         self.assertEqual(r.tick(), {"defer": 1})
         own = Review("me", "COMMENTED", "0" * 40, body="x\n\n" + marker_line("opus", "abcdef", "0" * 40))
@@ -295,13 +295,25 @@ class PullRequestLifecycle(LifecycleBase):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(is_draft=True)]
         r = self.runner(reviewer=FakeReviewer([]))
         self.assertEqual(r.process_pr("org/repo", 7), "defer")                    # a long draft phase does not count
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", ""),))]
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", "", required=True),))]
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(self.notified, [])
         self.now = __import__("time").time() + CI_WAIT_MAX_S + 60               # journal stamps use the wall clock
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(self.notified, ["org/repo#7: checks still running after 3 h; open it and decide"])
+
+    def test_optional_running_check_reviews_after_long_required_wait_without_ci_alert(self):
+        from lightkeeper.__main__ import CI_WAIT_MAX_S
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("slow", "in_progress", "", required=True),))]
+        reviewer = FakeReviewer([APPROVE])
+        r = self.runner(reviewer=reviewer)
+        self.assertEqual(r.process_pr("org/repo", 7), "defer")
+        self.now = __import__("time").time() + CI_WAIT_MAX_S + 60
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("slow", "in_progress", ""),))]
+        self.assertEqual(r.process_pr("org/repo", 7), "applied")
+        self.assertEqual(reviewer.calls, 1)
+        self.assertFalse(any("checks still running" in text for text in self.notified))
 
     def test_dry_run_notifications_are_marked(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
@@ -317,7 +329,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(self.runner(policy=edited, reviewer=FakeReviewer([APPROVE])).process_pr("org/repo", 7), "applied")
 
     def test_checks_pending_defers_without_model_call(self):
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", ""),))]
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("tests", "in_progress", "", required=True),))]
         reviewer = FakeReviewer([APPROVE])
         r = self.runner(reviewer=reviewer)
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
@@ -326,6 +338,17 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(reviewer.calls, 0)
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
         self.assertEqual(r.process_pr("org/repo", 7), "applied")
+
+    def test_newly_required_pending_check_blocks_pre_write_without_fingerprint_change(self):
+        check = Check("slow", "in_progress", "")
+        first = make_pr(checks=(check,))
+        required = dataclasses.replace(first, checks=(dataclasses.replace(check, required=True),))
+        self.assertEqual(first.fingerprint, required.fingerprint)
+        self.gh.pr_snapshots[("org/repo", 7)] = [first, required]
+        reviewer = FakeReviewer([APPROVE])
+        self.assertEqual(self.runner(reviewer=reviewer).process_pr("org/repo", 7), "defer")
+        self.assertEqual(reviewer.calls, 1)
+        self.assertEqual(self.gh.writes, [])
 
     def test_push_or_retarget_during_review_defers(self):
         first = make_pr()

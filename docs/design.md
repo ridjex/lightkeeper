@@ -55,10 +55,12 @@ judgement, and readers of both marker forms remain supported.
 Code, before the model sees anything (`policy.evaluate_pr`):
 - PR: repository in `repos`; open; not the owner's own; the owner's own approval at head → `satisfied`;
   the owner's own manual review (approve/request changes without the marker) → `ignore` (human took over);
-  dismissed automated review on this head → `ignore`; draft → `defer`; checks still running → `defer`
-  (after 3 h one notification, still no approval); GitHub's changed-file count must equal the files
-  fetched, else `nothing` + notification. A missing patch (binary or too large) is shown to the model as
-  such; the rules say when that is acceptable.
+  dismissed automated review on this head → `ignore`; draft → `defer`; checks GitHub requires for this PR
+  still running → `defer` (after 3 h one notification, still no approval). Optional checks are shown to the model as running or
+  not required and do not defer review; any failed check, including optional ones, still blocks approve.
+  Required flags come from one extra GraphQL query per full fetch and are excluded from the fingerprint.
+  GitHub's changed-file count must equal the files fetched, else `nothing` + notification. A missing patch
+  (binary or too large) is shown to the model as such; the rules say when that is acceptable.
 - Deployment: unchanged from v2 (pending environment with `current_user_can_approve`, found via
   notifications `reason = approval_requested`, filtered by enabled repositories with `deployments = true`; jobs still running → `defer`).
 - Context over the byte cap → `nothing` + notification, no call.

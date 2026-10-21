@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 
 from lightkeeper.github import (PR_VIEW_FIELDS, Gh, GhError, GhTimeout, clean_job_log, parse_approval_requests, parse_jobs,
-                                      parse_pending, parse_pull_request, parse_runs)
+                                      parse_pending, parse_pull_request, parse_required_checks, parse_runs)
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -33,6 +33,60 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(files["docs/wiki/new.md"].previous_path, "docs/wiki/old.md")
         self.assertTrue(files["docs/wiki/new.md"].is_complete)
         self.assertFalse(files["docs/logo.png"].is_complete)
+
+    def test_required_flags_match_both_context_types_and_missing_name_is_optional(self):
+        view = load("pr_view.json")
+        flags = parse_required_checks(load("pr_required_checks.json"), view["headRefOid"])
+        self.assertEqual(flags, {"pytest": True, "lint": False, "ci/legacy": True})
+        view["statusCheckRollup"].append({"name": "unlisted", "status": "IN_PROGRESS"})
+        pr = parse_pull_request("org/repo", view, [], [], flags)
+        self.assertEqual({c.name: c.required for c in pr.checks}, {**flags, "unlisted": False})
+
+    def test_required_query_rejects_malformed_partial_and_raced_responses(self):
+        good = load("pr_required_checks.json")
+        malformed = [None, [], {}, {"data": None}, {"data": {"node": None}},
+                     {**good, "errors": [{"message": "lookup failed"}]}]
+        for change in ("missing flag", "null flag", "string flag", "unknown type", "missing name",
+                       "missing contexts", "null nodes", "extra page", "missing page info", "wrong head"):
+            response = load("pr_required_checks.json")
+            commit = response["data"]["node"]["commits"]["nodes"][0]["commit"]
+            contexts = commit["statusCheckRollup"]["contexts"]
+            node = contexts["nodes"][0]
+            if change == "missing flag":
+                del node["isRequired"]
+            elif change == "null flag":
+                node["isRequired"] = None
+            elif change == "string flag":
+                node["isRequired"] = "false"
+            elif change == "unknown type":
+                node["__typename"] = "Other"
+            elif change == "missing name":
+                del node["name"]
+            elif change == "missing contexts":
+                del commit["statusCheckRollup"]["contexts"]
+            elif change == "null nodes":
+                contexts["nodes"] = None
+            elif change == "extra page":
+                contexts["pageInfo"]["hasNextPage"] = True
+            elif change == "missing page info":
+                del contexts["pageInfo"]
+            else:
+                commit["oid"] = "another head"
+            malformed.append(response)
+        for response in malformed:
+            with self.subTest(response=response), self.assertRaises(GhError):
+                parse_required_checks(response, load("pr_view.json")["headRefOid"])
+
+    def test_required_query_accepts_no_checks_and_combines_duplicate_names(self):
+        response = load("pr_required_checks.json")
+        commit = response["data"]["node"]["commits"]["nodes"][0]["commit"]
+        contexts = commit["statusCheckRollup"]["contexts"]
+        contexts["nodes"].append({"__typename": "CheckRun", "name": "pytest", "isRequired": False})
+        self.assertTrue(parse_required_checks(response, commit["oid"])["pytest"])
+        contexts["nodes"] = []
+        self.assertEqual(parse_required_checks(response, commit["oid"]), {})
+        commit["statusCheckRollup"] = None
+        self.assertEqual(parse_required_checks(response, commit["oid"]), {})
 
     def test_parse_runs_uses_workflow_basename(self):
         runs = parse_runs("org/repo", [{"id": 1, "run_attempt": 2, "path": ".github/workflows/infra-apply.yml",
@@ -87,14 +141,33 @@ class GhTests(unittest.TestCase):
         owner = {"user": {"login": "me"}, "state": "APPROVED", "commit_id": view["headRefOid"], "body": "LGTM"}
         others = [load("pr_reviews.json")[0]] * 149
         runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, json.dumps(data), "") for data in
-                                   (view, [load("pr_files.json")], [others[:100], others[100:] + [owner]])])
+                                   (view, load("pr_required_checks.json"), [load("pr_files.json")], [others[:100], others[100:] + [owner]])])
         pr = Gh(runner=runner).pull_request("org/repo", 42)
+        self.assertEqual(runner.call_count, 4)
+        self.assertIn("id", PR_VIEW_FIELDS.split(","))
+        call = runner.call_args_list[1]
+        self.assertEqual(call.args[0], ["gh", "api", "graphql", "--input", "-"])
+        payload = json.loads(call.kwargs["input"])
+        self.assertEqual(payload["variables"], {"id": "PR_42"})
+        self.assertIn("node(id:$id)", payload["query"])
+        self.assertEqual(payload["query"].count("isRequired(pullRequestId:$id)"), 2)
+        self.assertEqual([c.required for c in pr.checks], [True, False, True])
         self.assertEqual(len(pr.reviews), 150)
         self.assertEqual(pr.reviews[149].author, "me")
         self.assertEqual(evaluate_pr(pr, make_policy()).outcome, "satisfied")
         self.assertNotIn("reviews", PR_VIEW_FIELDS.split(","))
         self.assertEqual(runner.call_args_list[-1].args[0],
                          ["gh", "api", "repos/org/repo/pulls/42/reviews?per_page=100", "--paginate", "--slurp"])
+
+    def test_required_query_failure_never_returns_a_pull_request(self):
+        for result in (subprocess.CompletedProcess([], 1, "", "HTTP 502"),
+                       subprocess.CompletedProcess([], 0, "not json", ""),
+                       subprocess.CompletedProcess([], 0, "{}", "")):
+            runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, json.dumps(load("pr_view.json")), ""),
+                                       result])
+            with self.subTest(result=result), self.assertRaises(GhError):
+                Gh(runner=runner).pull_request("org/repo", 42)
+            self.assertEqual(runner.call_count, 2)
 
     def test_throttling_classification(self):
         for message, limited, no_access in (
