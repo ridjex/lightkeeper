@@ -8,6 +8,11 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 - Count each check name once, using its latest run; superseded cancellations no longer block approval.
 
+### Added
+
+- User-level `[alerts] reviews` setting (default false) to opt into model notification alerts; model notes
+  remain in the journal and PR detail, while code-raised conditions always alert.
+
 ## [0.1.8] — 2026-10-21
 
 ### Changed

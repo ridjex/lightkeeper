@@ -34,7 +34,8 @@ def _toml_value(value) -> str:
 def settings_toml(settings: Settings) -> str:
     """Write only our fixed settings shape, with quoted repository table keys."""
     sections = [("identity", {"login": settings.login}), ("agent", asdict(settings.agent)),
-                ("comment", asdict(settings.comment)), ("screen", asdict(settings.screen))]
+                ("comment", asdict(settings.comment)), ("screen", asdict(settings.screen)),
+                ("alerts", asdict(settings.alerts))]
     sections.extend((f"repos.{_toml_value(name)}", {k: v for k, v in asdict(repo).items() if k != "name"})
                     for name, repo in settings.repos.items())
     lines = []

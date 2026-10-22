@@ -311,6 +311,8 @@ class PRDetail(Screen):
         status = [("state", state), ("why", needs_you or row.why or "none"), ("next step", next_step), ("CI", counts)]
         if reviewers is not None:
             status.append(("reviewers", ", ".join(reviewers) or "none"))
+        if detail and detail.latest_model_note:
+            status.append(("note from the model", detail.latest_model_note))
         closed = next((e for e in reversed(events) if e.state in ("closed", "merged")), None)
         if closed:
             status.append(("merged" if row.state == "merged" else "closed",

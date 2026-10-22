@@ -22,6 +22,9 @@ login = "your-github-login"        # must match `gh auth status`
 # events = true                    # show occasional ships, whales and meteors
 # updates = true                   # check for a newer release once per 24 hours
 
+[alerts]
+# reviews = false                  # true also alerts you whenever a review the model posted did not approve
+
 [repos."your-org/your-repo"]
 post = "dry-run"                   # "live" posts reviews as you
 # allowed = ["approve", "request_changes", "comment"]

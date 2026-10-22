@@ -49,6 +49,11 @@ class RepoSettings:
 
 
 @dataclass(frozen=True)
+class AlertSettings:
+    reviews: bool = False
+
+
+@dataclass(frozen=True)
 class ScreenSettings:
     idle: str = "always"
     tempo: float = .8
@@ -70,6 +75,7 @@ class Settings:
     config_dir: Path
     fresh: bool = False
     screen: ScreenSettings = ScreenSettings()
+    alerts: AlertSettings = AlertSettings()
 
     @property
     def resolved_profile(self) -> str | None:
@@ -191,7 +197,9 @@ def load_settings(config_dir: str | Path | None = None, *, include_text: bool = 
         raw = tomllib.loads(_read_text(file))
     except tomllib.TOMLDecodeError as exc:
         raise SettingsError(file, "toml", str(exc)) from exc
-    _table(raw, file, "", {"identity", "agent", "comment", "repos", "screen"})
+    _table(raw, file, "", {"identity", "agent", "comment", "repos", "screen", "alerts"})
+    alerts = _table(raw.get("alerts", {}), file, "alerts", {"reviews"})
+    alert_settings = AlertSettings(_value(alerts, "reviews", False, bool, file, "alerts"))
     screen = _table(raw.get("screen", {}), file, "screen", {"idle", "tempo", "clock", "moon", "events", "updates"})
     tempo = screen.get("tempo", .8)
     if type(tempo) not in (int, float):
@@ -247,7 +255,7 @@ def load_settings(config_dir: str | Path | None = None, *, include_text: bool = 
         raise SettingsError(config / "rules.md", "rules", "shared rules are missing or blank; "
                             "run lightkeeper --init to create missing files, then edit rules.md")
     return Settings(login, AgentSettings(**agent_values, profile=profile, timeout_s=timeout), comments,
-                    repos, rules, template, notes, config, screen=screen_settings)
+                    repos, rules, template, notes, config, screen=screen_settings, alerts=alert_settings)
 
 
 def changed_components(before: dict[str, str], after: dict[str, str], repo: str) -> str:

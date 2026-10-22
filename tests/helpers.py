@@ -150,7 +150,7 @@ _settings_dirs = []
 
 def make_settings(rules=RULES, **overrides):
     import tempfile
-    from lightkeeper.settings import Settings, AgentSettings, CommentSettings, RepoSettings
+    from lightkeeper.settings import Settings, AgentSettings, AlertSettings, CommentSettings, RepoSettings
     from lightkeeper.migrate import settings_toml
     directory = tempfile.TemporaryDirectory()
     _settings_dirs.append(directory)
@@ -160,7 +160,7 @@ def make_settings(rules=RULES, **overrides):
                                       profile=overrides.get("claude_config_dir")), CommentSettings(),
                         {r: RepoSettings(r, post=overrides.get("mode", "live"), deployments=True)
                          for r in overrides.get("repos", ["org/repo", "org/private"])},
-                        rules, "", {}, root)
+                        rules, "", {}, root, alerts=AlertSettings(reviews=overrides.get("reviews", False)))
     (root / "settings.toml").write_text(settings_toml(settings))
     (root / "rules.md").write_text(rules)
     return settings

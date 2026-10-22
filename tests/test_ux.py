@@ -51,6 +51,22 @@ SVG_TEXT = '{http://www.w3.org/2000/svg}text'
 
 
 class UXDataTests(TestCase):
+    def test_model_note_is_plain_detail_without_needs_you(self):
+        projection = Projection()
+        record = dict(kind='pr', key=['org/repo', 7, HEAD], at='2026-10-10T10:00:00Z', source='ai')
+        projection.feed(dict(record, event='applied', action='comment', notify='Please inspect the change.'))
+        screen = projection.screen(Runtime(repos=('org/repo',)), NOW)
+        self.assertFalse(screen.watching[0].needs_you)
+        self.assertFalse(screen.alerts)
+        self.assertEqual(screen.details[tuple(record['key'])].latest_model_note, 'Please inspect the change.')
+        projection.feed(dict(record, event='error', action='comment', reason='Could not post'))
+        for _ in range(25):
+            projection.feed(dict(record, event='defer', reason='Waiting'))
+        self.assertEqual(projection.screen(screen.runtime, NOW).details[tuple(record['key'])].latest_model_note,
+                         'Please inspect the change.')
+        projection.feed(dict(record, event='assessment', action='comment', notify=None, model_notify=True))
+        self.assertEqual(projection.screen(screen.runtime, NOW).details[tuple(record['key'])].latest_model_note, '')
+
     def test_closure_preserves_post_and_assessment_after_timeline_eviction(self):
         projection = Projection()
         record = dict(kind='pr', key=['org/repo', 7, HEAD], at='2026-10-10T10:00:00Z')
@@ -999,6 +1015,7 @@ class UXPilots(IsolatedAsyncioTestCase):
         projection = Projection()
         record = dict(kind='pr', key=['org/repo', 7, HEAD], at='2026-10-10T10:00:00Z', title=pr.title, author=pr.author)
         projection.feed(dict(record, event='assessment', action='comment', summary='Check the input boundary.',
+                             notify='Please inspect the change.', model_notify=True,
                              why='Not approving yet: [bold]input[/] needs validation.',
                              watch='Check the retry path in src/parser.py.',
                              reason='A private explanation.', data={'session': str(session)}, findings=[
@@ -1034,6 +1051,8 @@ class UXPilots(IsolatedAsyncioTestCase):
             self.assertIn('font-weight: bold', styles[why_node.get('class')])
             self.assertLess(value.index('Not approving yet:'), value.index('Check the retry path'))
             self.assertLess(value.index('Check the retry path'), value.index('public summary'))
+            self.assertIn('note from the model', value)
+            self.assertIn('Please inspect the change.', value)
             for node in headers:
                 if node.text != 'Posted' or 'underline' in styles[node.get('class')]:
                     self.assertIn('font-weight: bold', styles[node.get('class')])

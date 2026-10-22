@@ -692,15 +692,16 @@ class Runner:
             return Decision("defer", f"reviewer failed: {exc}"[:200], "ai")
 
     def _settle_pr(self, key, pr: PullRequest, decision: Decision) -> str:
-        fields = {"reason": decision.reason, "source": decision.source, "fingerprint": pr.fingerprint, **decision.data}
+        fields = {"reason": decision.reason, "source": decision.source, "fingerprint": pr.fingerprint,
+                  "model_notify": decision.model_notify, **decision.data}
         previous = self.journal.settled_outcome(key)
         notified = self.journal.was_notified(key)
 
-        def notify(outcome, message):
+        def notify(outcome, message, *, model_text=False):
             if notified and previous == outcome:
                 return
             warned = outcome not in ("approve", "satisfied", "defer", "would_approve") and self._warn_if_block_active(key, pr)
-            if not warned:
+            if not warned and (not model_text or self.settings.alerts.reviews):
                 self._notify("pr", key, message)
         if decision.outcome in ("satisfied", "ignore", "nothing", "unclear"):
             if decision.outcome == "ignore" and decision.source == "eligibility" and decision.reason in (
@@ -708,8 +709,8 @@ class Runner:
                     "the owner has an unsubmitted review open",
                     "automated review was dismissed on this head"):
                 fields["protected"] = True
-            self._journal("pr", key, decision.outcome, **fields)
-            notify(decision.outcome, decision.notify)
+            self._journal("pr", key, decision.outcome, notify=decision.notify, **fields)
+            notify(decision.outcome, decision.notify, model_text=decision.model_notify)
             return decision.outcome
         if decision.outcome == "defer":
             self._defer("pr", key, decision.reason)
@@ -753,7 +754,7 @@ class Runner:
             self._journal("pr", key, f"would_{action}", action=action, **rendered,
                           notify=decision.notify, **fields)
             if self.mode(pr.repo) != "live":
-                notify(f"would_{action}", decision.notify)
+                notify(f"would_{action}", decision.notify, model_text=decision.model_notify)
             return f"would_{action}"
         if "satisfied" in result:
             self._journal("pr", key, "satisfied", reason=result["satisfied"], source="observed")
@@ -770,7 +771,7 @@ class Runner:
             return "unknown"
         self._journal("pr", key, "applied", action=action, notify=decision.notify,
                       **fields, **rendered, **result["applied"])
-        notify(action, decision.notify)
+        notify(action, decision.notify, model_text=decision.model_notify)
         return "applied"
 
     def _warn_if_block_active(self, key, pr: PullRequest) -> bool:
@@ -1157,7 +1158,9 @@ class Runner:
             return Decision(rec["action"], rec["reason"], rec["source"], body=rec.get("body", ""),
                             notify=rec.get("notify"), data=rec.get("data", {}), summary=rec.get("summary", ""),
                             findings=tuple(Finding.from_record(f) for f in rec.get("findings", ())),
-                            why=rec.get("why", ""), watch=rec.get("watch", ""))
+                            why=rec.get("why", ""), watch=rec.get("watch", ""),
+                            # Legacy assessments contain parsed, postable answers, never context-cap decisions.
+                            model_notify=rec.get("model_notify", rec["source"] == "ai"))
         return None
 
     def _boundary(self, repo, action, *, deployment=False, writing=False) -> dict:
@@ -1182,8 +1185,8 @@ class Runner:
             return {"defer": "stale assessment: " + changed_components(before.components, after.components, repo)}
         if action not in fresh.repo(repo).allowed:
             return {"withheld": f"{action} disabled"}
-        # Presentation may change without invalidating the assessment; render from this boundary's settings.
-        self.settings = replace(self.settings, template=fresh.template, comment=fresh.comment)
+        # Presentation and alerts may change without invalidating the assessment.
+        self.settings = replace(self.settings, template=fresh.template, comment=fresh.comment, alerts=fresh.alerts)
         if writing:
             if self.global_mode == "dry-run" or fresh.repo(repo).post == "dry-run":
                 return {"dry": True}

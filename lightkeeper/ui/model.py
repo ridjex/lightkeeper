@@ -138,6 +138,7 @@ class DetailState:
     latest_body: str = ""
     latest_session: str = ""
     latest_private_reason: str = ""
+    latest_model_note: str = ""
     latest_outcome: str = ""
     latest_summary: str = ""
     latest_why: str = ""

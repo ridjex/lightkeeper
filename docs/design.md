@@ -52,6 +52,8 @@ judgement, and readers of both marker forms remain supported.
 
 ## 4. What the code decides (invariants), what the model decides (rules)
 
+Code-raised conditions always alert; parsed model notification text alerts only with user-level `[alerts] reviews = true`, and otherwise remains a plain journal/detail note.
+
 Code, before the model sees anything (`policy.evaluate_pr`):
 - PR: repository in `repos`; open; not the owner's own; the owner's own approval at head → `satisfied`;
   the owner's own manual review (approve/request changes without the marker) → `ignore` (human took over);

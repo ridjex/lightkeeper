@@ -9,7 +9,7 @@ from lightkeeper.__main__ import REVIEWER_PAUSE_S, Runner
 from lightkeeper.github import Gh, GhError, GhTimeout
 from lightkeeper.journal import Journal
 from lightkeeper.models import Check, Decision, MARKER, PendingEnvironment, Review, marker_line
-from lightkeeper.reviewer import ReviewerError, UnclearAnswer
+from lightkeeper.reviewer import CONTEXT_MAX_BYTES, Reviewer, ReviewerError, UnclearAnswer, pr_decision_v2
 from tests.helpers import (APPLY_JOB, FakeGh, FakeReviewer, HEAD, PENDING_PROD, PLAN_JOB, PLAN_LOG_OK, make_file,
                            make_settings, make_pr, make_run)
 
@@ -19,7 +19,7 @@ NOTHING = Decision("nothing", "unclear", "ai")
 COMMENT = Decision("comment", "ci broke", "ai", summary="CI failed in sast: secret pattern in config.py.",
                    why="Not approving yet: CI failed in sast.")
 BLOCK = Decision("request_changes", "drops a table", "ai", summary="Migration drops `users`; please make it additive.",
-                 notify="org/repo#7 drops a table", why="Requesting changes: the migration drops a table.")
+                 notify="org/repo#7 drops a table", model_notify=True, why="Requesting changes: the migration drops a table.")
 
 
 class LifecycleBase(unittest.TestCase):
@@ -37,6 +37,9 @@ class LifecycleBase(unittest.TestCase):
         return Runner(policy or make_settings(), self.gh, self.journal, reviewer, clock=lambda: self.now,
                       notifier=lambda title, text: self.notified.append(text), live_lock_held=True)
 
+    def records(self):
+        return [json.loads(line) for line in self.journal.path.read_text(encoding="utf-8").splitlines()]
+
     def events(self):
         if not self.journal.path.exists():
             return []
@@ -45,6 +48,78 @@ class LifecycleBase(unittest.TestCase):
 
 
 class PullRequestLifecycle(LifecycleBase):
+    def test_model_notes_only_alert_when_enabled(self):
+        number = 10
+        for enabled in (False, True):
+            for mode in ("live", "dry-run"):
+                for action in ("approve", "comment", "request_changes", "nothing"):
+                    with self.subTest(enabled=enabled, mode=mode, action=action):
+                        number += 1
+                        pr = make_pr(number=number)
+                        note = f"Please look at {number}"
+                        decision = pr_decision_v2(dict(action=action, why="Review the change.", watch="",
+                                                      summary="A review.", findings=[], reason="Reason.", notify=note))
+                        self.gh.pr_snapshots[(pr.repo, number)] = [pr]
+                        r = self.runner(make_settings(mode=mode, reviews=enabled), FakeReviewer([decision]))
+                        self.notified.clear()
+                        r.process_pr(pr.repo, number)
+                        records = [rec for rec in self.records() if rec.get("key") == [pr.repo, number, HEAD]]
+                        self.assertEqual(sum(rec["event"] == "notify" for rec in records), int(enabled))
+                        self.assertEqual(self.notified, [("[dry-run] " if mode == "dry-run" else "") + note] if enabled else [])
+                        self.assertTrue(any(rec.get("notify") == note for rec in records))
+
+    def test_saved_model_notes_remain_optional_including_legacy_assessments(self):
+        pr = make_pr()
+        settings = make_settings()
+        key = (pr.repo, pr.number, HEAD)
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit):
+                r = self.runner(settings)
+                r._journal("pr", key, "assessment", action="comment", reason="Reason", source="ai",
+                           fingerprint=pr.fingerprint, summary="Summary", why="Please change this.", notify="Look",
+                           **({"model_notify": True} if explicit else {}))
+                r._journal("pr", key, "defer", reason="context changed before write")
+                replayed = Journal(self.journal.path)
+                replayed.replay()
+                r.journal = replayed
+                decision = r._stored_decision(key, pr.fingerprint)
+                self.assertTrue(decision.model_notify)
+                self.gh.pr_snapshots[(pr.repo, pr.number)] = [pr]
+                r._settle_pr(key, pr, decision)
+                self.assertEqual(self.notified, [])
+                self.assertFalse(any(rec["event"] == "notify" for rec in self.records()))
+
+    def test_review_alert_setting_reloads_before_posting(self):
+        settings = make_settings(reviews=True)
+        (settings.config_dir / "settings.toml").write_text(
+            (settings.config_dir / "settings.toml").read_text(encoding="utf-8").replace(
+                "reviews = true", "reviews = false"), encoding="utf-8")
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
+        r = self.runner(settings, FakeReviewer([BLOCK]))
+        self.assertEqual(r.process_pr("org/repo", 7), "applied")
+        self.assertEqual(self.notified, [])
+
+    def test_code_owned_nothing_still_alerts(self):
+        cases = [(make_pr(author="robot[bot]"), Decision("nothing", "bot author", "eligibility", notify="Bot author")),
+                 (make_pr(changed_files=2), None),
+                 (make_pr(author="robot[bot]"), APPROVE)]
+        engine = Mock()
+        big = make_pr(files=(make_file(patch="x" * (CONTEXT_MAX_BYTES + 1)),))
+        capped = Reviewer(engine, "Rules").review_pr(big)
+        self.assertFalse(capped.model_notify)
+        engine.ask.assert_not_called()
+        cases.append((big, capped))
+        for number, (pr, decision) in enumerate(cases, 20):
+            with self.subTest(number=number):
+                pr = dataclasses.replace(pr, number=number)
+                self.gh.pr_snapshots[(pr.repo, number)] = [pr]
+                r = self.runner(reviewer=FakeReviewer([decision] if decision else []))
+                self.notified.clear()
+                self.assertEqual(r.process_pr(pr.repo, number), "nothing")
+                self.assertEqual(len(self.notified), 1)
+                self.assertEqual(sum(rec['event'] == 'notify' and rec.get('key') == [pr.repo, number, HEAD]
+                                     for rec in self.records()), 1)
+
     def test_comment_then_push_then_approve_is_final_on_third_tick(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
         reviewer = FakeReviewer([COMMENT, APPROVE])
@@ -241,7 +316,7 @@ class PullRequestLifecycle(LifecycleBase):
 
     def test_request_changes_notifies_and_is_superseded_on_next_head(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
-        r = self.runner(reviewer=FakeReviewer([BLOCK, APPROVE]))
+        r = self.runner(policy=make_settings(reviews=True), reviewer=FakeReviewer([BLOCK, APPROVE]))
         self.assertEqual(r.process_pr("org/repo", 7), "applied")
         self.assertEqual(self.gh.writes[0][4], "request_changes")
         self.assertEqual(self.notified, ["org/repo#7 drops a table"])
@@ -345,7 +420,7 @@ class PullRequestLifecycle(LifecycleBase):
 
     def test_dry_run_notifications_are_marked(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
-        r = self.runner(policy=make_settings(mode="dry-run"), reviewer=FakeReviewer([BLOCK]))
+        r = self.runner(policy=make_settings(mode="dry-run", reviews=True), reviewer=FakeReviewer([BLOCK]))
         self.assertEqual(r.process_pr("org/repo", 7), "would_request_changes")
         self.assertEqual(self.notified, ["[dry-run] org/repo#7 drops a table"])
         self.assertEqual(self.gh.writes, [])
@@ -545,7 +620,9 @@ class PullRequestLifecycle(LifecycleBase):
     def test_active_automated_block_is_reported_when_new_head_is_not_approved(self):
         block = Review("me", "CHANGES_REQUESTED", "0" * 40, body="no\n\n" + marker_line("opus", "abcdef", "0" * 40))
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(reviews=(block,))]
-        r = self.runner(reviewer=FakeReviewer([NOTHING, COMMENT]))
+        model_nothing = pr_decision_v2(dict(action="nothing", why="Not ready.", watch="", summary="Not ready.",
+                                           findings=[], reason="Not ready.", notify="Model note"))
+        r = self.runner(reviewer=FakeReviewer([model_nothing, COMMENT]))
         self.assertEqual(r.process_pr("org/repo", 7), "nothing")
         self.assertEqual(len([n for n in self.notified if "still blocks" in n]), 1)   # told once, right away
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(reviews=(block,), body="edited")]

@@ -14,6 +14,35 @@ REPO = '[repos."example/widget"]\n'
 
 
 class SettingsTests(unittest.TestCase):
+    def test_alert_settings_default_validation_and_preservation(self):
+        from lightkeeper.migrate import settings_toml
+        from lightkeeper.settings import save_settings, settings_digest
+        self.assertFalse(load_settings(self.config).alerts.reviews)
+        self.assertFalse(self.load().alerts.reviews)  # Existing files have no alerts table.
+        self.assertFalse(self.load(MINIMUM + '[alerts]\n').alerts.reviews)
+        for enabled in (False, True):
+            settings = self.load(MINIMUM + f'[alerts]\nreviews={str(enabled).lower()}\n')
+            self.assertEqual(settings.alerts.reviews, enabled)
+            self.assertEqual(self.load(settings_toml(settings)).alerts.reviews, enabled)
+            saved = save_settings(self.config, {'comment': {'disclose': False}}, settings_digest(self.config))
+            self.assertEqual(saved.settings.alerts.reviews, enabled)
+        for text, key in (('alerts=true\n' + MINIMUM, 'alerts'),
+                          (MINIMUM + '[alerts]\nunknown=true', 'alerts.unknown'),
+                          (MINIMUM + '[alerts]\nreviews="true"', 'alerts.reviews'),
+                          (MINIMUM + '[alerts]\nreviews=1', 'alerts.reviews'),
+                          (MINIMUM + REPO + 'alerts={reviews=true}', 'repos."example/widget".alerts')):
+            with self.subTest(text=text), self.assertRaises(SettingsError) as error:
+                self.load(text)
+            self.assertEqual(error.exception.key, key)
+
+    def test_alert_settings_keep_the_existing_judgement_hash(self):
+        from tests.helpers import make_settings
+        # Captured before check deduplication and alert settings changed any code.
+        for enabled in (False, True):
+            settings = make_settings(reviews=enabled)
+            self.assertEqual(settings.judgement('org/repo').hash, '77666cbd56be')
+            self.assertEqual(load_settings(settings.config_dir).judgement('org/repo').hash, '77666cbd56be')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

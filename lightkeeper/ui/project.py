@@ -130,6 +130,7 @@ class Projection:
             rec.get("session", rec.get("data", {}).get("session", "")), rec.get("url", "")))[-20:]
         latest = self._events[key][-1]
         detail = self._details.get(key, DetailState())
+        model_note = "notify" in rec and rec.get("model_notify", rec.get("source") == "ai" and rec.get("action") in ACTIONS)
         status = self._statuses.get(identity)
         self._details[key] = replace(
             detail,
@@ -138,6 +139,7 @@ class Projection:
             or dry else detail.latest_post,
             latest_body=latest.body if event == "satisfied" and rec.get("origin") == "owner" else latest.body or detail.latest_body,
             latest_session=latest.session or detail.latest_session,
+            latest_model_note=(rec.get("notify") or "") if model_note or event == "assessment" else detail.latest_model_note,
             latest_private_reason=(latest.private_reason if event == "assessment" else
                                    detail.latest_private_reason if detail.latest_verdict else
                                    latest.private_reason or detail.latest_private_reason),

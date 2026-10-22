@@ -122,8 +122,8 @@ the model gets the description, the diff, every check with its link, the tail of
 the earlier comments and reviews, and your `rules.md`; it answers one of
 `approve | request_changes | comment | nothing`, public `why` and `watch`, a summary and findings,
 a private reason, and optionally one line for you. The script checks the pull request has not changed,
-posts the review bound to the reviewed commit, writes the journal, and shows a desktop notification when
-the model says you should look. A pull request stays watched until it is closed: a new push is a new
+posts the review bound to the reviewed commit, writes the journal, and alerts you to conditions raised
+by the code. A pull request stays watched until it is closed: a new push is a new
 evaluation, nobody has to re-request you.
 
 Between full checks, light polls refresh author/title/CI every 15 s and wake a full check on a push,
@@ -261,6 +261,9 @@ moon = true
 events = true
 updates = true                     # once a day, ask GitHub for a newer release
 
+[alerts]
+reviews = false                    # true also makes the model's notify line an owner alert
+
 [repos."example/widget"]
 enabled = true
 start = "request"                  # only supported start mode
@@ -353,6 +356,11 @@ header badge and a `needs you` Watching state. The nighttime lighthouse beam tur
 Press `Enter` on the alert to open PR detail, then `o` to inspect it on GitHub and `A` to approve as owner
 if it is fine (with confirmation); `o` also works directly on the alert. ASCII uses `#`, and the badge
 keeps its reverse-video emphasis with `NO_COLOR`.
+
+Code-raised conditions (such as refused approvals, unclear answers and write failures) always create
+Alerts, a `needs you` state and a desktop notification. The model's optional notify line stays in the
+journal and PR detail as a plain "note from the model" by default; set `[alerts] reviews = true` in
+your user settings to make it an alert too. History still shows non-approving reviews either way.
 
 ## Troubleshooting
 

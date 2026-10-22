@@ -244,7 +244,7 @@ def parse_pr_answer(out: dict) -> Decision:
     if action in ("request_changes", "comment") and not body.strip():
         raise UnclearAnswer(f"{action} without a body", None)
     notify = notify.strip() if isinstance(notify, str) and notify.strip() else None
-    return Decision(action, reason.strip()[:300], "ai", body=body.strip()[:600], notify=notify)
+    return Decision(action, reason.strip()[:300], "ai", body=body.strip()[:600], notify=notify, model_notify=True)
 
 
 def _v2_fields(obj, schema: dict, field: str) -> dict:
@@ -293,7 +293,7 @@ def parse_pr_answer_v2(obj) -> AnswerV2:
 def pr_decision_v2(obj) -> Decision:
     answer = parse_pr_answer_v2(obj)
     return Decision(answer.action, answer.reason, "ai", summary=answer.summary,
-                    findings=answer.findings, notify=answer.notify, why=answer.why, watch=answer.watch)
+                    findings=answer.findings, notify=answer.notify, why=answer.why, watch=answer.watch, model_notify=True)
 
 
 def parse_deploy_answer_v2(obj) -> Decision:

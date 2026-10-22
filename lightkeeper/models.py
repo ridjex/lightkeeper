@@ -210,3 +210,5 @@ class Decision:
     findings: tuple[Finding, ...] = ()
     why: str = ""
     watch: str = ""
+    # Only parsed PR answers set this; even source="ai" can carry code text (context cap, unclear).
+    model_notify: bool = False

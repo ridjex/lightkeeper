@@ -253,6 +253,7 @@ class ClaudeReviewerTests(unittest.TestCase):
         d = ClaudeReviewer("opus", RULES, runner=runner).review_pr(big)
         self.assertEqual((d.outcome, runner.calls), ("nothing", []))
         self.assertIn("exceeds", d.notify)
+        self.assertFalse(d.model_notify)
 
     def test_envelope_with_nonzero_exit_is_still_classified(self):
         poison = json.dumps({"type": "result", "is_error": True, "subtype": "error_max_turns", "result": ""})
