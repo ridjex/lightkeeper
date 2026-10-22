@@ -16,6 +16,64 @@ def load(name):
 
 
 class ParseTests(unittest.TestCase):
+    def test_latest_check_run_replaces_cancelled_run(self):
+        from lightkeeper.github import PRStatus
+        from lightkeeper.policy import approve_floor
+        from lightkeeper.reviewer import build_pr_prompt
+
+        old = dict(name="tests", status="COMPLETED", conclusion="CANCELLED",
+                   startedAt="2026-10-20T10:00:00Z", completedAt="2026-10-20T12:00:00Z",
+                   detailsUrl="https://github.com/org/repo/actions/runs/1/job/1")
+        new = dict(old, conclusion="SUCCESS", startedAt="2026-10-20T11:00:00Z",
+                   detailsUrl="https://github.com/org/repo/actions/runs/2/job/2")
+        for rollup in ([old, new], [new, old]):
+            for flags, declared in ((None, None), ({"tests": True}, []), ({"tests": False}, ["tests"])):
+                with self.subTest(rollup=rollup, flags=flags):
+                    view = dict(load("pr_view.json"), statusCheckRollup=rollup)
+                    pr = parse_pull_request("org/repo", view, [], [], flags, declared)
+                    self.assertIsNone(approve_floor(pr))
+                    self.assertEqual(PRStatus.from_pr(pr).ci.total, 1)
+                    self.assertEqual(pr.checks[0].details_url, new["detailsUrl"])
+                    self.assertTrue(pr.checks[0].required)
+                    gh = Gh()
+                    gh.job_log = Mock()
+                    self.assertEqual(gh.failed_check_logs(pr), [])
+                    gh.job_log.assert_not_called()
+                    context = build_pr_prompt(pr)
+                    self.assertIn(new["detailsUrl"], context)
+                    self.assertNotIn(old["detailsUrl"], context)
+
+    def test_check_timestamp_fallbacks_and_status_contexts(self):
+        for fields in (dict(name="tests", status="COMPLETED", conclusion="SUCCESS"),
+                       dict(context="legacy", state="SUCCESS")):
+            for dates in (({"completedAt": "2026-10-20T11:00:00Z"},
+                           {"completedAt": "2026-10-20T10:00:00Z"}, "first"),
+                          ({}, {}, "second"),
+                          ({"startedAt": "2026-10-20T10:00:00Z"},
+                           {"startedAt": "2026-10-20T10:00:00Z"}, "second")):
+                first, second, expected = dates
+                with self.subTest(fields=fields, dates=dates):
+                    view = dict(load("pr_view.json"), statusCheckRollup=[
+                        dict(fields, **first, targetUrl="first"), dict(fields, **second, targetUrl="second")])
+                    pr = parse_pull_request("org/repo", view, [], [], {}, [])
+                    self.assertEqual(len(pr.checks), 1)
+                    self.assertEqual(pr.checks[0].details_url, expected)
+                    self.assertFalse(pr.checks[0].required)
+
+    def test_undated_rerun_uses_list_order_and_still_waits(self):
+        from lightkeeper.policy import evaluate_pr
+        from tests.helpers import make_settings
+        old = dict(name="tests", status="COMPLETED", conclusion="SUCCESS", startedAt="2026-10-20T10:00:00Z")
+        for missing in (None, "", "0001-01-01T00:00:00Z"):
+            queued = dict(name="tests", status="QUEUED", startedAt=missing, completedAt=missing)
+            with self.subTest(missing=missing):
+                view = dict(load("pr_view.json"), statusCheckRollup=[old, queued])
+                pr = parse_pull_request("org/repo", view, [], [], {"tests": True}, [])
+                self.assertEqual(len(pr.checks), 1)
+                self.assertEqual(evaluate_pr(pr, make_settings()).reason, "checks still running: tests")
+                view["statusCheckRollup"] = [queued, old]
+                self.assertEqual(parse_pull_request("org/repo", view, [], []).checks[0].conclusion, "success")
+
     def test_parse_pull_request(self):
         pr = parse_pull_request("org/repo", load("pr_view.json"), load("pr_files.json"), load("pr_reviews.json"))
         self.assertEqual((pr.repo, pr.number, pr.author, pr.state, pr.is_draft), ("org/repo", 42, "alice", "OPEN", False))

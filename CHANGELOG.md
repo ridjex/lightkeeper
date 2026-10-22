@@ -4,6 +4,10 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Changed
+
+- Count each check name once, using its latest run; superseded cancellations no longer block approval.
+
 ## [0.1.8] — 2026-10-21
 
 ### Changed

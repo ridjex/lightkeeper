@@ -214,9 +214,16 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
                review_id=r.get("id"), submitted_at=r.get("submitted_at") or "")
         for r in reviews
     )
-    checks = []
+    latest = {}
     for c in view.get("statusCheckRollup") or []:
         name = c.get("name") or c.get("context") or ""
+        stamp = next((c[field] for field in ("startedAt", "completedAt")
+                      if c.get(field) and c[field] != "0001-01-01T00:00:00Z"), "")
+        # GitHub timestamps sort chronologically; ties or an undated run use list order.
+        if name not in latest or not stamp or not latest[name][0] or stamp >= latest[name][0]:
+            latest[name] = (stamp, c)
+    checks = []
+    for name, (_, c) in latest.items():
         url = c.get("detailsUrl") or c.get("targetUrl") or ""
         required = required_checks is None or required_checks.get(name, False) or name in (declared_checks or ())
         if "state" in c and "status" not in c:            # StatusContext (commit status)

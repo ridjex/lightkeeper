@@ -116,7 +116,8 @@ and start it again. Configuration, journal and sessions are never touched by an 
 Every minute: for each repository in your `settings.toml`, find the open pull requests where you are a
 requested reviewer, plus the ones the tool already watches. Drafts wait; checks that GitHub requires for
 the pull request wait. Optional checks are shown to the model as running or not required and never block
-review, except that a failed check of any kind still blocks an approve. For the rest,
+review, except that a failed check of any kind still blocks an approve. Re-runs of a check count once,
+using the latest run. For the rest,
 the model gets the description, the diff, every check with its link, the tail of each failed job's log,
 the earlier comments and reviews, and your `rules.md`; it answers one of
 `approve | request_changes | comment | nothing`, public `why` and `watch`, a summary and findings,
