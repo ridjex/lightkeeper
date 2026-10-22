@@ -112,6 +112,11 @@ transport failure is `unknown` and reconciled against GitHub before anything els
 
 ## 5. Discovery and finality
 
+- Between full ticks, one light GraphQL query per batch of up to 50 watched PRs reads head/state/draft,
+  author/title and up to 100 reported check contexts per PR, including names and run timestamps. Both
+  parsers share latest-run deduplication; unreported declared checks stay outside light-status counts.
+  Truncated contexts skip only that PR with one warning per head; a missing rollup means zero checks.
+  Pushes, state/draft changes, all checks finishing or a changed failure count can wake a full tick.
 - Candidates each tick: `gh search prs user-review-requested:<login> --repo … --state open` (direct
   requests only) ∪ every PR in the journal without a `closed` event (watched). A watched PR is forgotten
   when seen closed or merged; reopened, it is found again by search. A search failure does not stop the

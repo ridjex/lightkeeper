@@ -128,8 +128,11 @@ evaluation, nobody has to re-request you.
 
 Between full checks, light polls refresh author/title/CI every 15 s and wake a full check on a push,
 a state or draft change, when all checks finish or when a check fails. Failed ticks keep their normal
-delay; light-poll errors retry at 30 s, then 60 s. `--once` skips light polls. API budget: light polls cost
-about 240 GraphQL points per hour per batch of up to 50 watched pull requests, plus full checks; each
+delay; light-poll errors retry at 30 s, then 60 s. Each light poll reads up to 100 reported check contexts
+per pull request and keeps the latest run per name, just like a full fetch. Truncated contexts leave that
+pull request's status unchanged until a full fetch, with one warning per head; a missing rollup means no
+reported checks. `--once` skips light polls. API budget: light polls make about 240 GraphQL calls per hour
+per batch of up to 50 watched pull requests, plus full checks; points depend on the queried connections. Each
 early wake adds a full tick of about four calls per watched pull request. Each full fetch with a PR node ID
 adds one GraphQL required-check query (normally one point) to the view, files and reviews calls. It reads the base
 branch’s declared required contexts and up to 100 reported check contexts. Declared contexts that have

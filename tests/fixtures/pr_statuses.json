@@ -11,18 +11,16 @@
         "commits": {"nodes": [{"commit": {"statusCheckRollup": {
           "state": "PENDING",
           "contexts": {
-            "totalCount": 8,
-            "checkRunCountsByState": [
-              {"state": "SUCCESS", "count": 2},
-              {"state": "IN_PROGRESS", "count": 1},
-              {"state": "QUEUED", "count": 0},
-              {"state": "FAILURE", "count": 1},
-              {"state": "STALE", "count": 1},
-              {"state": "SKIPPED", "count": 1}
-            ],
-            "statusContextCountsByState": [
-              {"state": "SUCCESS", "count": 1},
-              {"state": "PENDING", "count": 1}
+            "pageInfo": {"hasNextPage": false},
+            "nodes": [
+              {"__typename": "CheckRun", "name": "unit", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": null, "completedAt": null},
+              {"__typename": "CheckRun", "name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": null, "completedAt": null},
+              {"__typename": "CheckRun", "name": "integration", "status": "IN_PROGRESS", "conclusion": null, "startedAt": null, "completedAt": null},
+              {"__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "FAILURE", "startedAt": null, "completedAt": null},
+              {"__typename": "CheckRun", "name": "stale", "status": "COMPLETED", "conclusion": "STALE", "startedAt": null, "completedAt": null},
+              {"__typename": "CheckRun", "name": "skipped", "status": "COMPLETED", "conclusion": "SKIPPED", "startedAt": null, "completedAt": null},
+              {"__typename": "StatusContext", "context": "legacy", "state": "SUCCESS"},
+              {"__typename": "StatusContext", "context": "external", "state": "PENDING"}
             ]
           }
         }}}]}

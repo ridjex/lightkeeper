@@ -3,6 +3,8 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-10-23 · **The light poll reads check names so both paths deduplicate alike:** superseded runs must not wake a full fetch every poll.
+
 - 2026-10-23 · **Model review alerts default off:** the owner can act on code-raised conditions; a non-approving review is the author's to act on, and History shows it anyway.
 
 - 2026-10-23 · **One check per name, latest run wins:** a superseded run is not a verdict; use startedAt, then completedAt, then list order.

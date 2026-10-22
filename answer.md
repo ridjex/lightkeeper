@@ -15,3 +15,11 @@ Validation: `ruff check .` passed; `python3 -S -m unittest` passed (625 tests, 1
 Independent Claude review identified the undated queued-rerun case and model-note loss on write errors; both were corrected and regression-tested. Delegation note: accepted both findings; reviewer pane closed.
 
 Clarification: this checkout handles bot authors at the approval floor, not initial eligibility. That behavior is preserved; tests cover the real bot floor, an explicit eligibility nothing, incomplete files, context caps, unclear answers and active blocks. Existing journal notify records remain unchanged and visible; the setting controls future alerts. No unresolved implementation questions.
+
+## Follow-up: light-poll rerun parity
+
+Done: light polls read check names, states and timestamps and share the pure `latest_runs` helper with full fetches (`lightkeeper/github.py:93`, `lightkeeper/github.py:210`). Counts and totals include only surviving reported checks, so superseded cancelled runs no longer cause repeated full-fetch wakes. Batching remains one GraphQL call per up to 50 PRs. Truncated contexts skip only the affected PR and log once per head; missing rollups still mean zero checks (`lightkeeper/github.py:418`).
+
+Regression tests compare `counts`, `ci` and `wake_key` for reruns and unreported declared checks, and cover truncation, warning suppression and recovery (`tests/test_fast_poll.py:62`). Replaced the light-poll fixture with context nodes; updated README API-budget wording, design and decisions.
+
+Validation: `ruff check .` passed; `python3 -S -m unittest` passed (627 tests, 130 skipped); `python3 -m unittest tests.test_ux` passed (45 tests, one skipped); `git diff --check` passed. All GitHub/model calls in tests were fake.

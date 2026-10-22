@@ -24,8 +24,13 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 STATUS_BATCH_SIZE = 50
 _logger = logging.getLogger("lightkeeper")
 _STATUS_FIELDS = """state headRefOid isDraft updatedAt author { login } title
-  commits(last:1) { nodes { commit { statusCheckRollup { state contexts(first:1) {
-    totalCount checkRunCountsByState { state count } statusContextCountsByState { state count }
+  commits(last:1) { nodes { commit { statusCheckRollup { contexts(first:100) {
+    pageInfo { hasNextPage }
+    nodes {
+      __typename
+      ... on CheckRun { name status conclusion startedAt completedAt }
+      ... on StatusContext { context state }
+    }
   } } } } }"""
 
 _REQUIRED_CHECKS_QUERY = """query($id:ID!) {
@@ -55,7 +60,7 @@ class PRStatus:
     counts: tuple[tuple[str, int], ...]
     ci: CICounts
     updated_at: str = ""
-    failed_checks: tuple[str, ...] | None = None  # names are available on the full fetch only
+    failed_checks: tuple[str, ...] | None = None  # populated by the full fetch only
     approve_refusal: str = ""                   # full-fetch floor for the owner's confirmation
 
     base_ref: str = ""
@@ -86,7 +91,7 @@ class PRStatus:
 
 
 def parse_pr_statuses(response: dict, prs: list[tuple[str, int]]) -> list[PRStatus]:
-    """Aliases are positional; a missing repository or PR is left for the full tick."""
+    """Aliases are positional; missing PRs and truncated contexts are left for the full tick."""
     data = response["data"]
     if not isinstance(data, dict):
         raise ValueError("missing GraphQL data")
@@ -105,17 +110,22 @@ def parse_pr_statuses(response: dict, prs: list[tuple[str, int]]) -> list[PRStat
         nodes = pr["commits"]["nodes"]
         rollup = nodes[0]["commit"]["statusCheckRollup"] if nodes else None
         contexts = rollup["contexts"] if rollup else None
+        if contexts and contexts["pageInfo"]["hasNextPage"] is not False:
+            continue
+        runs = latest_runs(contexts["nodes"] if contexts else [])
         states = Counter()
-        if contexts:
-            for source in ("checkRunCountsByState", "statusContextCountsByState"):
-                for entry in contexts[source]:
-                    state = entry["state"].lower()
-                    if source == "statusContextCountsByState" and state not in _STATUS_DONE:
-                        state = "pending"  # same normalization as parse_pull_request
-                    if entry["count"]:
-                        states[state] += entry["count"]
+        for c in runs:
+            if "state" in c and "status" not in c:
+                state = (c.get("state") or "").lower()
+                if state not in _STATUS_DONE:
+                    state = "pending"  # same normalization as parse_pull_request
+            else:
+                state = (c.get("status") or "").lower()
+                if state == "completed":
+                    state = (c.get("conclusion") or "").lower()
+            states[state] += 1
         counts = tuple(sorted(states.items()))
-        ci = CICounts.from_states(counts, contexts["totalCount"] if contexts else 0)
+        ci = CICounts.from_states(counts, len(runs))
         result.append(PRStatus(repo, number, pr["state"], pr["headRefOid"], pr["isDraft"],
                                (pr["author"] or {}).get("login", ""), pr["title"], counts, ci, pr["updatedAt"]))
     return result
@@ -197,6 +207,19 @@ def parse_required_checks(response: dict, head_sha: str) -> tuple[dict[str, bool
         raise GhError(["api", "graphql"], 1, f"invalid required-check response: {exc}") from exc
 
 
+def latest_runs(contexts: list[dict]) -> list[dict]:
+    """Keep one run per check name or status context, using list order when dates cannot decide."""
+    latest = {}
+    for c in contexts:
+        name = c.get("name") or c.get("context") or ""
+        stamp = next((c[field] for field in ("startedAt", "completedAt")
+                      if c.get(field) and c[field] != "0001-01-01T00:00:00Z"), "")
+        # GitHub timestamps sort chronologically; ties or an undated run use list order.
+        if name not in latest or not stamp or not latest[name][0] or stamp >= latest[name][0]:
+            latest[name] = (stamp, c)
+    return [c for _, c in latest.values()]
+
+
 def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[dict],
                        required_checks: dict[str, bool] | None = None,
                        declared_checks: list[str] | None = None) -> PullRequest:
@@ -214,16 +237,9 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
                review_id=r.get("id"), submitted_at=r.get("submitted_at") or "")
         for r in reviews
     )
-    latest = {}
-    for c in view.get("statusCheckRollup") or []:
-        name = c.get("name") or c.get("context") or ""
-        stamp = next((c[field] for field in ("startedAt", "completedAt")
-                      if c.get(field) and c[field] != "0001-01-01T00:00:00Z"), "")
-        # GitHub timestamps sort chronologically; ties or an undated run use list order.
-        if name not in latest or not stamp or not latest[name][0] or stamp >= latest[name][0]:
-            latest[name] = (stamp, c)
     checks = []
-    for name, (_, c) in latest.items():
+    for c in latest_runs(view.get("statusCheckRollup") or []):
+        name = c.get("name") or c.get("context") or ""
         url = c.get("detailsUrl") or c.get("targetUrl") or ""
         required = required_checks is None or required_checks.get(name, False) or name in (declared_checks or ())
         if "state" in c and "status" not in c:            # StatusContext (commit status)
@@ -301,6 +317,7 @@ class Gh:
         self._runner = runner
         self.timeout_s = timeout_s
         self._required_check_warnings: set[tuple[str, int, str]] = set()
+        self._status_warnings: set[tuple[str, int, str]] = set()
 
     def run(self, args: list[str], *, timeout_s: int | None = None, errors: str = "strict", input: str | None = None) -> str:
         timeout = timeout_s or self.timeout_s
@@ -398,7 +415,16 @@ class Gh:
                     raise exc
                 if not response or not response.get("errors") or exc.rate_limited:
                     raise
-            result.extend(parse_pr_statuses(response, batch))
+            statuses = parse_pr_statuses(response, batch)
+            known = {(status.repo, status.number) for status in statuses}
+            for i, (repo, number) in enumerate(batch):
+                pr = (response["data"].get(f"pr{i}") or {}).get("pullRequest")
+                if pr is not None and (repo, number) not in known:
+                    key = repo, number, pr["headRefOid"]
+                    if key not in self._status_warnings:
+                        self._status_warnings.add(key)
+                        _logger.warning("%s#%s head=%s: light-poll check contexts incomplete; skipping", *key)
+            result.extend(statuses)
         return result
 
     def run_by_id(self, repo: str, run_id: int) -> WorkflowRun:

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from lightkeeper.__main__ import FAST_POLL_S, Runner, _loop
-from lightkeeper.github import Gh, GhError, GhTimeout, PRStatus, parse_pr_statuses
+from lightkeeper.github import Gh, GhError, GhTimeout, PRStatus, parse_pr_statuses, parse_pull_request
 from lightkeeper.journal import Journal
 from lightkeeper.models import CICounts, Check, Decision
 from lightkeeper.ui.model import Runtime
@@ -28,10 +28,13 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(first.ci, CICounts(8, 3, 2, 1, 2))
         self.assertEqual((first.author, first.title), ("contributor", "Update the sample widget"))
         self.assertEqual((empty.ci, empty.author), (CICounts(), ""))
-        checks = tuple(Check(str(i), "completed" if state not in ("in_progress", "pending") else state,
-                             state if state not in ("in_progress", "pending") else "")
-                       for state, count in first.counts for i in range(count))
-        full = PRStatus.from_pr(make_pr(head_sha=first.head, checks=checks))
+        pr = response["data"]["pr0"]["pullRequest"]
+        contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
+        full = PRStatus.from_pr(parse_pull_request("example/widget", {
+            **pr, "number": 1, "statusCheckRollup": contexts["nodes"]
+        }, [], []))
+        self.assertEqual(first.counts, full.counts)
+        self.assertEqual(first.ci, full.ci)
         self.assertEqual(first.wake_key, full.wake_key)
 
     def test_ci_groups_do_not_change_eligibility(self):
@@ -43,33 +46,80 @@ class StatusTests(unittest.TestCase):
         self.assertTrue(checks[-1].failed)  # stale remains a policy failure
 
     def test_unfinished_commit_status_matches_full_fetch_normalization(self):
-        from lightkeeper.github import parse_pull_request
         response = json.loads(FIXTURE.read_text())
         response.pop("errors")
         pr = response["data"]["pr0"]["pullRequest"]
         contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
-        contexts.update(totalCount=1, checkRunCountsByState=[],
-                        statusContextCountsByState=[{"state": "EXPECTED", "count": 1}])
+        contexts["nodes"] = [{"context": "test", "state": "EXPECTED"}]
         light = parse_pr_statuses(response, [("example/widget", 1)])[0]
         full = PRStatus.from_pr(parse_pull_request("example/widget", {
-            **pr, "number": 1, "statusCheckRollup": [{"context": "test", "state": "EXPECTED"}]
+            **pr, "number": 1, "statusCheckRollup": contexts["nodes"]
         }, [], []))
+        self.assertEqual(light.counts, full.counts)
+        self.assertEqual(light.ci, full.ci)
         self.assertEqual(light.wake_key, full.wake_key)
 
     def test_unreported_declared_check_does_not_wake(self):
-        from lightkeeper.github import parse_pull_request
         response = json.loads(FIXTURE.read_text())
         response.pop("errors")
         pr = response["data"]["pr0"]["pullRequest"]
         contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
-        contexts.update(totalCount=1, checkRunCountsByState=[{"state": "SUCCESS", "count": 1}],
-                        statusContextCountsByState=[])
+        contexts["nodes"] = [{"name": "unit", "status": "COMPLETED", "conclusion": "SUCCESS"}]
         light = parse_pr_statuses(response, [("example/widget", 1)])[0]
         full = PRStatus.from_pr(parse_pull_request("example/widget", {
-            **pr, "number": 1, "statusCheckRollup": [{"name": "unit", "status": "COMPLETED", "conclusion": "SUCCESS"}]
+            **pr, "number": 1, "statusCheckRollup": contexts["nodes"]
         }, [], [], {"unit": False}, ["external"]))
+        self.assertEqual(light.counts, full.counts)
+        self.assertEqual(light.ci, full.ci)
         self.assertEqual(light.wake_key, full.wake_key)
         self.assertEqual(full.ci.running, 0)
+
+    def test_superseded_runs_match_full_fetch(self):
+        old = dict(__typename="CheckRun", name="unit", status="COMPLETED", conclusion="CANCELLED",
+                   startedAt="2026-10-20T10:00:00Z", completedAt="2026-10-20T12:00:00Z")
+        new = dict(old, conclusion="SUCCESS", startedAt="2026-10-20T11:00:00Z")
+        queued = dict(old, status="QUEUED", conclusion=None, startedAt=None, completedAt=None)
+        legacy = [{"__typename": "StatusContext", "context": "legacy", "state": state}
+                  for state in ("ERROR", "SUCCESS")]
+        for runs, expected in (([old, new], CICounts(1, 1)), ([new, old], CICounts(1, 1)),
+                               ([new, queued], CICounts(1, running=1)), (legacy, CICounts(1, 1))):
+            with self.subTest(runs=runs):
+                response = json.loads(FIXTURE.read_text())
+                pr = response["data"]["pr0"]["pullRequest"]
+                contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
+                contexts["nodes"] = runs
+                light = parse_pr_statuses(response, [("example/widget", 1)])[0]
+                full = PRStatus.from_pr(parse_pull_request("example/widget", {
+                    **pr, "number": 1, "statusCheckRollup": runs
+                }, [], []))
+                self.assertEqual(light.ci, expected)
+                self.assertEqual(light.counts, full.counts)
+                self.assertEqual(light.ci, full.ci)
+                self.assertEqual(light.wake_key, full.wake_key)
+
+    def test_truncated_contexts_skip_only_that_pr_and_warn_once_per_head(self):
+        response = json.loads(FIXTURE.read_text())
+        pr = response["data"]["pr0"]["pullRequest"]
+        contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
+        contexts["pageInfo"]["hasNextPage"] = True
+        prs = [("example/widget", i) for i in (1, 2, 3)]
+        self.assertEqual([s.number for s in parse_pr_statuses(response, prs)], [3])
+        child = FakeRunner(stdout=json.dumps(response))
+        gh = Gh(runner=child)
+        with self.assertLogs("lightkeeper", level="WARNING") as logs:
+            for _ in range(2):
+                self.assertEqual([s.number for s in gh.pr_statuses(prs)], [3])
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("example/widget#1", logs.output[0])
+        self.assertIn("incomplete; skipping", logs.output[0])
+        pr["headRefOid"] = "c" * 40
+        child.stdout = json.dumps(response)
+        with self.assertLogs("lightkeeper", level="WARNING"):
+            gh.pr_statuses(prs)
+        contexts["pageInfo"]["hasNextPage"] = False
+        child.stdout = json.dumps(response)
+        with self.assertNoLogs("lightkeeper", level="WARNING"):
+            self.assertEqual([s.number for s in gh.pr_statuses(prs)], [1, 3])
 
     def test_batches_variables_and_partial_cli_error(self):
         child = FakeRunner(stdout='{"data": {}}')
@@ -85,7 +135,11 @@ class StatusTests(unittest.TestCase):
             self.assertNotIn("widget", query)
             self.assertIn("owner0=example", args)
             self.assertIn("name0=widget", args)
-            self.assertIn("contexts(first:1)", query)
+            self.assertIn("contexts(first:100)", query)
+            self.assertIn("pageInfo { hasNextPage }", query)
+            self.assertIn("name status conclusion startedAt completedAt", query)
+            self.assertIn("context state", query)
+            self.assertNotIn("CountsByState", query)
         self.assertIn("number0=50", child.calls[1][0])
         child = FakeRunner(stdout=FIXTURE.read_text(), returncode=1, stderr="gh: Could not resolve a PullRequest")
         self.assertEqual(len(Gh(runner=child).pr_statuses([("example/widget", i) for i in (1, 2, 3)])), 2)
