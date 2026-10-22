@@ -60,19 +60,49 @@ class ParseTests(unittest.TestCase):
                     self.assertEqual(pr.checks[0].details_url, expected)
                     self.assertFalse(pr.checks[0].required)
 
-    def test_undated_rerun_uses_list_order_and_still_waits(self):
-        from lightkeeper.policy import evaluate_pr
+    def test_active_rerun_beats_completed_run_in_either_order(self):
+        from lightkeeper.policy import approve_floor, evaluate_pr
         from tests.helpers import make_settings
-        old = dict(name="tests", status="COMPLETED", conclusion="SUCCESS", startedAt="2026-10-20T10:00:00Z")
-        for missing in (None, "", "0001-01-01T00:00:00Z"):
-            queued = dict(name="tests", status="QUEUED", startedAt=missing, completedAt=missing)
-            with self.subTest(missing=missing):
-                view = dict(load("pr_view.json"), statusCheckRollup=[old, queued])
-                pr = parse_pull_request("org/repo", view, [], [], {"tests": True}, [])
-                self.assertEqual(len(pr.checks), 1)
-                self.assertEqual(evaluate_pr(pr, make_settings()).reason, "checks still running: tests")
-                view["statusCheckRollup"] = [queued, old]
-                self.assertEqual(parse_pull_request("org/repo", view, [], []).checks[0].conclusion, "success")
+        for status in ("QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"):
+            for conclusion in ("SUCCESS", "CANCELLED"):
+                old = dict(name="tests", status="COMPLETED", conclusion=conclusion,
+                           startedAt="2026-10-20T10:00:00Z")
+                for missing in (None, "", "0001-01-01T00:00:00Z"):
+                    active = dict(name="tests", status=status, startedAt=missing, completedAt=missing)
+                    for runs in ([old, active], [active, old]):
+                        with self.subTest(status=status, conclusion=conclusion, runs=runs):
+                            view = dict(load("pr_view.json"), statusCheckRollup=runs)
+                            pr = parse_pull_request("org/repo", view, [], [], {"tests": True}, [])
+                            self.assertEqual(len(pr.checks), 1)
+                            self.assertEqual(pr.checks[0].status, status.lower())
+                            self.assertIsNone(approve_floor(pr))
+                            self.assertEqual(evaluate_pr(pr, make_settings()).reason, "checks still running: tests")
+
+    def test_same_named_jobs_in_different_workflows_keep_failure_and_logs(self):
+        from lightkeeper.policy import approve_floor
+        from lightkeeper.reviewer import build_pr_prompt
+
+        failed = dict(name="build", workflowName="CI", status="COMPLETED", conclusion="FAILURE",
+                      startedAt="2026-10-20T10:00:00Z",
+                      detailsUrl="https://github.com/org/repo/actions/runs/1/job/1")
+        success = dict(failed, workflowName="Release", conclusion="SUCCESS", startedAt="2026-10-20T10:01:00Z",
+                       detailsUrl="https://github.com/org/repo/actions/runs/2/job/2")
+        for runs in ([failed, success], [success, failed]):
+            for flags, declared in ((None, None), ({"build": True}, []), ({"build": False}, ["build"])):
+                with self.subTest(runs=runs, flags=flags):
+                    view = dict(load("pr_view.json"), statusCheckRollup=runs)
+                    pr = parse_pull_request("org/repo", view, [], [], flags, declared)
+                    self.assertEqual(len(pr.checks), 2)
+                    self.assertTrue(all(check.required for check in pr.checks))
+                    self.assertIsNotNone(approve_floor(pr))
+                    gh = Gh()
+                    gh.job_log = Mock(return_value="failed build log")
+                    failed_check = next(check for check in pr.checks if check.failed)
+                    self.assertEqual(gh.failed_check_logs(pr), [(failed_check, "failed build log")])
+                    gh.job_log.assert_called_once_with("org/repo", 1)
+                    context = build_pr_prompt(pr)
+                    self.assertIn(failed["detailsUrl"], context)
+                    self.assertIn(success["detailsUrl"], context)
 
     def test_parse_pull_request(self):
         pr = parse_pull_request("org/repo", load("pr_view.json"), load("pr_files.json"), load("pr_reviews.json"))

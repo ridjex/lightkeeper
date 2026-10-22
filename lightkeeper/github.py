@@ -28,8 +28,8 @@ _STATUS_FIELDS = """state headRefOid isDraft updatedAt author { login } title
     pageInfo { hasNextPage }
     nodes {
       __typename
-      ... on CheckRun { name status conclusion startedAt completedAt }
-      ... on StatusContext { context state }
+      ... on CheckRun { name status conclusion startedAt completedAt checkSuite { workflowRun { workflow { name } } } }
+      ... on StatusContext { context state createdAt }
     }
   } } } } }"""
 
@@ -208,16 +208,28 @@ def parse_required_checks(response: dict, head_sha: str) -> tuple[dict[str, bool
 
 
 def latest_runs(contexts: list[dict]) -> list[dict]:
-    """Keep one run per check name or status context, using list order when dates cannot decide."""
+    """Keep one run per workflow/check pair or status context."""
     latest = {}
     for c in contexts:
         name = c.get("name") or c.get("context") or ""
-        stamp = next((c[field] for field in ("startedAt", "completedAt")
+        if "state" in c and "status" not in c:
+            key = name
+            active = (c.get("state") or "").lower() not in _STATUS_DONE
+        else:
+            suite = c.get("checkSuite") or {}
+            workflow = (suite.get("workflowRun") or {}).get("workflow") or {}
+            key = (c.get("workflowName") or workflow.get("name") or "", name)
+            active = (c.get("status") or "").lower() in {
+                "queued", "in_progress", "pending", "waiting", "requested"}
+        stamp = next((c[field] for field in ("startedAt", "completedAt", "createdAt")
                       if c.get(field) and c[field] != "0001-01-01T00:00:00Z"), "")
-        # GitHub timestamps sort chronologically; ties or an undated run use list order.
-        if name not in latest or not stamp or not latest[name][0] or stamp >= latest[name][0]:
-            latest[name] = (stamp, c)
-    return [c for _, c in latest.values()]
+        # Active reruns beat completed runs in either order; within each group latest date wins,
+        # with list order breaking ties or missing dates (including undated completed runs).
+        previous = latest.get(key)
+        if (previous is None or active > previous[0] or
+                (active == previous[0] and (not stamp or not previous[1] or stamp >= previous[1]))):
+            latest[key] = (active, stamp, c)
+    return [c for _, _, c in latest.values()]
 
 
 def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[dict],

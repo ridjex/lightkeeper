@@ -78,19 +78,39 @@ class StatusTests(unittest.TestCase):
         old = dict(__typename="CheckRun", name="unit", status="COMPLETED", conclusion="CANCELLED",
                    startedAt="2026-10-20T10:00:00Z", completedAt="2026-10-20T12:00:00Z")
         new = dict(old, conclusion="SUCCESS", startedAt="2026-10-20T11:00:00Z")
-        queued = dict(old, status="QUEUED", conclusion=None, startedAt=None, completedAt=None)
+        queued = dict(old, status="QUEUED", conclusion=None,
+                      startedAt="0001-01-01T00:00:00Z", completedAt=None)
+        running = dict(new, status="IN_PROGRESS", conclusion=None)
         legacy = [{"__typename": "StatusContext", "context": "legacy", "state": state}
                   for state in ("ERROR", "SUCCESS")]
+        dated_statuses = [dict(legacy[0], state="FAILURE", createdAt="2026-10-20T11:00:00Z"),
+                          dict(legacy[1], createdAt="2026-10-20T10:00:00Z")]
+        workflows = [dict(old, name="build", conclusion="FAILURE",
+                          checkSuite={"workflowRun": {"workflow": {"name": "CI"}}}),
+                     dict(new, name="build", startedAt="2026-10-20T10:01:00Z",
+                          checkSuite={"workflowRun": {"workflow": {"name": "Release"}}})]
         for runs, expected in (([old, new], CICounts(1, 1)), ([new, old], CICounts(1, 1)),
-                               ([new, queued], CICounts(1, running=1)), (legacy, CICounts(1, 1))):
+                               ([new, queued], CICounts(1, running=1)),
+                               ([queued, old], CICounts(1, running=1)),
+                               ([new, running], CICounts(1, running=1)), (legacy, CICounts(1, 1)),
+                               (dated_statuses, CICounts(1, failed=1)),
+                               (workflows, CICounts(2, passed=1, failed=1))):
             with self.subTest(runs=runs):
                 response = json.loads(FIXTURE.read_text())
                 pr = response["data"]["pr0"]["pullRequest"]
                 contexts = pr["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]
                 contexts["nodes"] = runs
                 light = parse_pr_statuses(response, [("example/widget", 1)])[0]
+                full_runs = []
+                for run in runs:
+                    run = run.copy()
+                    if "checkSuite" in run:
+                        run["workflowName"] = run.pop("checkSuite")["workflowRun"]["workflow"]["name"]
+                    if "createdAt" in run:
+                        run["startedAt"] = run.pop("createdAt")
+                    full_runs.append(run)
                 full = PRStatus.from_pr(parse_pull_request("example/widget", {
-                    **pr, "number": 1, "statusCheckRollup": runs
+                    **pr, "number": 1, "statusCheckRollup": full_runs
                 }, [], []))
                 self.assertEqual(light.ci, expected)
                 self.assertEqual(light.counts, full.counts)
@@ -131,6 +151,8 @@ class StatusTests(unittest.TestCase):
             self.assertEqual(query.count("pullRequest(number:"), count)
             self.assertIn("$owner0:String!", query)
             self.assertIn("$number0:Int!", query)
+            self.assertIn("checkSuite { workflowRun { workflow { name } } }", query)
+            self.assertIn("... on StatusContext { context state createdAt }", query)
             self.assertNotIn("example", query)
             self.assertNotIn("widget", query)
             self.assertIn("owner0=example", args)

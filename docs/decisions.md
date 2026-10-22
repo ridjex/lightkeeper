@@ -7,7 +7,7 @@ belongs in its commit and pull request.
 
 - 2026-10-23 · **Model review alerts default off:** the owner can act on code-raised conditions; a non-approving review is the author's to act on, and History shows it anyway.
 
-- 2026-10-23 · **One check per name, latest run wins:** a superseded run is not a verdict; use startedAt, then completedAt, then list order.
+- 2026-10-23 · **One check per workflow and job name (statuses per context):** active reruns supersede completed runs regardless of list order; within each group use startedAt, then completedAt, then createdAt, with list order only for ties or missing dates. Required flags remain matched by name.
 
 - 2026-10-21 · **Missing declared checks wait; failed lookups use all checks.** Branch declarations cover checks that have not reported, while a once-per-head warning and the old all-checks gate keep lookup failures from blocking owner and recovery paths.
 

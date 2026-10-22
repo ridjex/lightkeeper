@@ -116,8 +116,9 @@ and start it again. Configuration, journal and sessions are never touched by an 
 Every minute: for each repository in your `settings.toml`, find the open pull requests where you are a
 requested reviewer, plus the ones the tool already watches. Drafts wait; checks that GitHub requires for
 the pull request wait. Optional checks are shown to the model as running or not required and never block
-review, except that a failed check of any kind still blocks an approve. Re-runs of a check count once,
-using the latest run. For the rest,
+review, except that a failed check of any kind still blocks an approve. Re-runs of a check count once
+per workflow and job name (commit statuses use their context). Active reruns supersede completed runs;
+otherwise the latest timestamp wins, with list order breaking ties or missing dates. For the rest,
 the model gets the description, the diff, every check with its link, the tail of each failed job's log,
 the earlier comments and reviews, and your `rules.md`; it answers one of
 `approve | request_changes | comment | nothing`, public `why` and `watch`, a summary and findings,
@@ -129,7 +130,7 @@ evaluation, nobody has to re-request you.
 Between full checks, light polls refresh author/title/CI every 15 s and wake a full check on a push,
 a state or draft change, when all checks finish or when a check fails. Failed ticks keep their normal
 delay; light-poll errors retry at 30 s, then 60 s. Each light poll reads up to 100 reported check contexts
-per pull request and keeps the latest run per name, just like a full fetch. Truncated contexts leave that
+per pull request and uses the same workflow-aware rerun selection as a full fetch. Truncated contexts leave that
 pull request's status unchanged until a full fetch, with one warning per head; a missing rollup means no
 reported checks. `--once` skips light polls. API budget: light polls make about 240 GraphQL calls per hour
 per batch of up to 50 watched pull requests, plus full checks; points depend on the queried connections. Each
@@ -265,7 +266,7 @@ events = true
 updates = true                     # once a day, ask GitHub for a newer release
 
 [alerts]
-reviews = false                    # true also makes the model's notify line an owner alert
+reviews = false                    # true also alerts on the model's optional notify line, for any outcome
 
 [repos."example/widget"]
 enabled = true
@@ -363,7 +364,8 @@ keeps its reverse-video emphasis with `NO_COLOR`.
 Code-raised conditions (such as refused approvals, unclear answers and write failures) always create
 Alerts, a `needs you` state and a desktop notification. The model's optional notify line stays in the
 journal and PR detail as a plain "note from the model" by default; set `[alerts] reviews = true` in
-your user settings to make it an alert too. History still shows non-approving reviews either way.
+your user settings to make it an alert too, for any outcome that includes a notify line. A review without
+a notify line does not raise a model alert. History still shows non-approving reviews either way.
 
 ## Troubleshooting
 
