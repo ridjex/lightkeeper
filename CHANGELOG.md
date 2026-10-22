@@ -4,9 +4,12 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-10-23
+
 ### Changed
 
-- Count each check name once, using its latest run; superseded cancellations no longer block approval.
+- Count each check once per workflow and job name, using its latest run (an active re-run beats a finished one);
+  superseded cancelled runs no longer block approval. The light poll reads check names too, so both paths agree.
 
 ### Added
 
