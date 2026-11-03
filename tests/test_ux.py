@@ -729,10 +729,10 @@ class UXPilots(IsolatedAsyncioTestCase):
         snapshot = replace(fixture_screen(), watching=(), alerts=())
         app = self.app(snapshot)
         app.on_app_blur(events.AppBlur())
-        self.assertEqual(app._idle_interval, 1)
+        self.assertEqual(app._idle_interval, .1)
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
-            self.assertEqual(app._idle_timer._interval, 1)
+            self.assertEqual(app._idle_timer._interval, .1)
             for hidden_by_screen in (False, True):
                 app.on_app_focus(events.AppFocus())
                 if hidden_by_screen:
@@ -745,8 +745,8 @@ class UXPilots(IsolatedAsyncioTestCase):
                 old_timer = app._idle_timer
                 app.post_message(events.AppBlur())
                 await pilot.pause()
-                self.assertIsNone(old_timer._task)
-                self.assertEqual(app._idle_timer._interval, 1)
+                self.assertIs(app._idle_timer, old_timer)
+                self.assertEqual(app._idle_timer._interval, .1)
                 self.assertFalse(app._idle_timer._active.is_set())
             old_timer = app._idle_timer
         with patch.object(app, 'set_interval') as start:
@@ -914,13 +914,13 @@ class UXPilots(IsolatedAsyncioTestCase):
             old_timer = app._idle_timer
             app.post_message(events.AppBlur())
             await pilot.pause()
-            self.assertEqual(app._idle_interval, 1)
-            self.assertIsNone(old_timer._task)
+            self.assertEqual(app._idle_interval, .1)
+            self.assertIs(app._idle_timer, old_timer)
             blurred_timer = app._idle_timer
             app.post_message(events.AppFocus())
             await pilot.pause()
             self.assertEqual(app._idle_interval, .1)
-            self.assertIsNone(blurred_timer._task)
+            self.assertIs(app._idle_timer, blurred_timer)
             await app.push_screen(Confirm('Synthetic screen'))
             self.assertFalse(app._idle_timer._active.is_set())
             with patch('lightkeeper.ui.textual_app.idle_panel') as render:

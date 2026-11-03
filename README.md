@@ -370,9 +370,10 @@ a notify line does not raise a model alert. History still shows non-approving re
 ## Troubleshooting
 
 - The screen feels slow or lags behind the keys (remote sessions, a busy terminal): the picture skips
-  frames while the terminal is behind; the Agent screen (`3`) shows the effective rate and skipped frames.
+  frames while the terminal is behind; losing keyboard focus keeps the same rate. The picture targets
+  10 fps whenever the Overview picture is visible; the Agent screen (`3`) shows the effective rate and skipped frames.
   `[screen] idle = "quiet"` removes the picture once something is watched. `LIGHTKEEPER_SCREEN_TRACE=1`
-  adds a `screen-trace` JSON line to `run.log` every five seconds (`grep screen-trace run.log`).
+  adds a `screen-trace` JSON line to `run.log` every five seconds, including focus and picture visibility (`grep screen-trace run.log`).
 - `gh ? <login> (unconfirmed)` means the last known login could not be verified; writes wait, and an error alert appears after three failed checks in a row.
 - `gh ✗ <actual>` in the header: `gh auth status` shows another account than `[identity] login`; writes are
   deferred until it matches.

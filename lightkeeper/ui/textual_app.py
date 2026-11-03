@@ -255,13 +255,9 @@ class TextualApp(App):
 
     def on_app_blur(self, event: events.AppBlur):
         self._idle_blurred = True
-        self._idle_on_time = 0
-        self.idle_rate(1)
 
     def on_app_focus(self, event: events.AppFocus):
         self._idle_blurred = False
-        self._idle_on_time = 0
-        self.idle_rate(self.IDLE_INTERVALS[self._idle_step])
 
     def screen_rate(self):
         result = f"Screen: {1 / self._idle_interval:g} fps"
@@ -275,7 +271,8 @@ class TextualApp(App):
 
     def write_screen_trace(self):
         if self._screen_trace is not None:
-            self._screen_trace.write(self._idle_interval, self.size)
+            self._screen_trace.write(self._idle_interval, self.size,
+                                     focused=not self._idle_blurred, visible=self._idle_visible)
 
     def writer_backlog(self):
         """Terminal writes still queued by Textual's writer thread; None without one (headless, tests)."""
@@ -305,18 +302,16 @@ class TextualApp(App):
                 if trace is not None:
                     trace.skipped += 1
                 self._idle_on_time = 0
-                if not self._idle_blurred:    # the blurred rate is capped anyway; do not bill the step later
-                    self._idle_step = min(self._idle_step + 1, len(self.IDLE_INTERVALS) - 1)
+                self._idle_step = min(self._idle_step + 1, len(self.IDLE_INTERVALS) - 1)
                 # Re-arm even at the slowest rate: never catch up with a burst of old frames.
-                self.idle_rate(1 if self._idle_blurred else self.IDLE_INTERVALS[self._idle_step], reset=True)
+                self.idle_rate(self.IDLE_INTERVALS[self._idle_step], reset=True)
                 return
             self._idle_due += self._idle_interval
-            if not self._idle_blurred:
-                self._idle_on_time += 1
-                if self._idle_on_time == 30:  # Recover slowly so a busy terminal can drain.
-                    self._idle_on_time = 0
-                    self._idle_step = max(0, self._idle_step - 1)
-                    self.idle_rate(self.IDLE_INTERVALS[self._idle_step])
+            self._idle_on_time += 1
+            if self._idle_on_time == 30:  # Recover slowly so a busy terminal can drain.
+                self._idle_on_time = 0
+                self._idle_step = max(0, self._idle_step - 1)
+                self.idle_rate(self.IDLE_INTERVALS[self._idle_step])
             self.refresh_idle(self.snapshot, self.clock(),
                               self.size.width - self.overview.scrollbar_size_vertical, force=True)
         except Exception:

@@ -4,6 +4,11 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep the visible idle picture smooth when keyboard focus moves to another pane or app; terminal
+  backpressure still skips frames and reduces the rate. Screen traces include focus and picture visibility.
+
 ## [0.1.9] — 2026-10-23
 
 ### Changed

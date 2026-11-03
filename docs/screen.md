@@ -32,7 +32,7 @@ Tempo defaults to 0.8; the local-hour palette and sun/moon position, moon and ra
 The scene starts at 10 fps while visible. A frame is skipped while Textual's writer queue still holds the
 previous one (the terminal is behind; without a writer thread, a timer more than one interval late counts
 the same), and the rate steps down through 5, 2 and 1 fps; 30 consecutive on-time frames recover one step.
-Losing focus caps it at 1 fps without changing the step; focus restores the adaptive rate. It pauses whenever neither slot is visible, including
+Keyboard focus does not change the rate or recovery: an unfocused pane can still be visible. It pauses whenever neither slot is visible, including
 behind other screens. Fewer frames show the same scene at the same time; tempo still scales only scene clocks.
 The Agent screen (`3`) shows `Screen: 10 fps`, or the reduced rate, `terminal behind` and the total
 frames skipped; expanded Overview help (`?`) shows it too.

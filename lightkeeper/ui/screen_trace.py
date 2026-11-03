@@ -29,10 +29,10 @@ class ScreenTrace:
     def duration(self, name, elapsed):
         self.durations[name].add(elapsed)
 
-    def write(self, interval, size):
+    def write(self, interval, size, *, focused=True, visible=True):
         """One line per window: high lateness with low durations means the terminal, not the app, is slow."""
         record = {"utc": datetime.now(timezone.utc).isoformat(), "interval": interval,
-                  "rendered": self.rendered, "skipped": self.skipped, "max_lateness": self.max_lateness,
+                  "focused": focused, "visible": visible, "rendered": self.rendered, "skipped": self.skipped, "max_lateness": self.max_lateness,
                   "backlog": self.backlog,
                   **{name: {"calls": d.calls, "max": d.maximum} for name, d in self.durations.items()},
                   "width": size.width, "height": size.height}

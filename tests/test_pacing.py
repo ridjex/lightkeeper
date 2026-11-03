@@ -97,22 +97,28 @@ class PacingTests(PacingFixture, unittest.TestCase):
         self.frame(app)              # the 30th on-time frame steps down
         self.assertEqual(app._idle_interval, .5)
 
-    def test_blur_caps_at_one_fps_and_focus_preserves_adaptive_rate(self):
+    def test_focus_reports_do_not_change_rate_or_recovery(self):
+        from textual._xterm_parser import XTermParser
         app = self.app_instance
+        parser = XTermParser(debug=False)
+        blur, = parser.feed("\x1b[O")
+        focus, = parser.feed("\x1b[I")
+        self.assertIsInstance(blur, events.AppBlur)
+        self.assertIsInstance(focus, events.AppFocus)
+        app.on_app_blur(blur)
+        self.assertEqual(app.screen_rate(), "Screen: 10 fps · unfocused")
         self.frame(app, .11)
-        app.on_app_blur(events.AppBlur())
-        self.assertEqual(app._idle_interval, 1)
-        for _ in range(35):
+        self.assertEqual((app._idle_interval, app._idle_skipped), (.2, 1))
+        for _ in range(15):
             self.frame(app)
-        self.frame(app, 1.5)      # late while blurred: skipped, but the step is not billed after focus
-        self.assertEqual((app._idle_interval, app._idle_step, app._idle_skipped), (1, 1, 2))
-        app.on_app_focus(events.AppFocus())
-        self.assertEqual(app._idle_interval, .2)
-        for _ in range(30):
+        app.on_app_focus(focus)
+        self.assertEqual(app._idle_on_time, 15)
+        app.on_app_blur(blur)
+        for _ in range(15):
             self.frame(app)
-        app.on_app_blur(events.AppBlur())
-        app.on_app_focus(events.AppFocus())
         self.assertEqual(app._idle_interval, .1)
+        app.on_app_focus(focus)
+        self.assertEqual(app.screen_rate(), "Screen: 10 fps (1 frame skipped)")
 
     def test_writer_backlog_is_the_primary_signal(self):
         app = self.app_instance
@@ -208,6 +214,8 @@ class PacingPilots(PacingFixture, unittest.IsolatedAsyncioTestCase):
                     first, empty = (json.loads(line.split("screen-trace ", 1)[1]) for line in logs.output)
                     self.assertEqual(datetime.fromisoformat(first["utc"]).utcoffset().total_seconds(), 0)
                     self.assertEqual(first["interval"], .2)
+                    self.assertTrue(first["focused"])
+                    self.assertTrue(first["visible"])
                     self.assertEqual((first["rendered"], first["skipped"], first["backlog"]), (1, 1, 0))
                     self.assertAlmostEqual(first["max_lateness"], .15)
                     self.assertEqual((first["width"], first["height"]), (202, 40))
