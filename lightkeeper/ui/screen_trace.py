@@ -30,7 +30,7 @@ class ScreenTrace:
         self.durations[name].add(elapsed)
 
     def write(self, interval, size, *, focused=True, visible=True):
-        """One line per window: high lateness with low durations means the terminal, not the app, is slow."""
+        """One pacing window; callback timings exclude Textual's deferred composition."""
         record = {"utc": datetime.now(timezone.utc).isoformat(), "interval": interval,
                   "focused": focused, "visible": visible, "rendered": self.rendered, "skipped": self.skipped, "max_lateness": self.max_lateness,
                   "backlog": self.backlog,

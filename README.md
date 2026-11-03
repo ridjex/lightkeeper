@@ -354,6 +354,8 @@ setting, including the screen settings form; `?` shows the keys. Rules, template
 notes open in a built-in editor; `Ctrl-E` opens `$EDITOR`. A lighthouse scene sits above the
 Watching table by default (`[screen] idle = "quiet"` shows it only while nothing is watched). Everything about the screen,
 the keys, the PR detail, the editors and the idle scene is in [docs/screen.md](docs/screen.md).
+Picture frames repaint changed rows without relaying out the screen; unchanged clocks, cells and footer
+text do not request updates. `LIGHTKEEPER_BENCH=1 make test` includes the raster and full-screen CPU budgets.
 
 Items needing you appear first in Alerts as bold amber `◆` lines, with a reverse-video `◆ N needs you`
 header badge and a `needs you` Watching state. The nighttime lighthouse beam turns amber too.

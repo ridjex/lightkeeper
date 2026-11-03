@@ -20,6 +20,7 @@ from textual.widgets import DataTable, Input, Static
 
 from ..commands import Command
 from .idle import Look
+from .idle_widget import IdlePanel
 from .project import label
 from .platform import clipboard as system_clipboard, open_folder
 from .detail import ConfirmOwnerApprove, PRDetail
@@ -88,6 +89,8 @@ class TextualApp(App):
         self._render_failed = False
         self._last_snapshot = None
         self._row_width = None
+        self._header_key = None
+        self._footer_key = None
         self._idle_layout = None
         self._idle_compact_key = None
         self._idle_visible = False
@@ -205,7 +208,7 @@ class TextualApp(App):
         yield Static(text(), markup=False, id="header")
         for section in self.SECTIONS:
             if section == "watching":
-                yield Static(text(), markup=False, id="idle-above")
+                yield IdlePanel(text(), markup=False, id="idle-above")
             yield Static(text(), markup=False, id=f"{section}-heading")
             # DataTable has no markup switch: supplying only Text cells/labels bypasses markup.
             table = OverviewTable(id=section, show_header=False, show_row_labels=False,
@@ -213,7 +216,7 @@ class TextualApp(App):
             if section == "watching":
                 with Vertical(id="watching-block"):
                     yield table
-                    yield Static(text(), markup=False, id="idle")
+                    yield IdlePanel(text(), markup=False, id="idle")
             else:
                 yield table
         yield Static(text(), markup=False, id="footer")
@@ -450,7 +453,8 @@ class TextualApp(App):
                                     free_rows=free_rows, no_color=self.no_color,
                                     look=Look(tempo=screen.runtime.tempo, daytime=screen.runtime.clock,
                                               moon=screen.runtime.moon, events=screen.runtime.events,
-                                              needs_you=needs_you)))
+                                              needs_you=needs_you)),
+                         layout=layout != self._idle_layout)
             if self._screen_trace is not None:
                 self._screen_trace.rendered += 1
             self._idle_layout = layout
@@ -516,14 +520,16 @@ class TextualApp(App):
         self.refresh_idle(screen, now, self.size.width - self.overview.scrollbar_size_vertical)
         indices = dict.fromkeys(self.SECTIONS, 0)
         for section, row in self.rows:
-            table = self.query_one(f"#{section}", DataTable)
             key = str(indices[section])
             indices[section] += 1
+            if section == "history" and row.state != "reviewing":
+                continue
+            table = self.query_one(f"#{section}", DataTable)
             if section == "alerts":
-                table.update_cell(key, "0", self.alert_text(row, screen, now))
+                self.update_cell(table, key, "0", self.alert_text(row, screen, now))
                 continue
             if row.state == "reviewing":
-                table.update_cell(key, "1", glyph(row.state, now, self.ascii))
+                self.update_cell(table, key, "1", glyph(row.state, now, self.ascii))
             if section == "watching":
                 seconds = (now - screen.runtime.phase_since if row.state == "reviewing" else
                            screen.wall_now - row.since + since_snapshot)
@@ -531,7 +537,12 @@ class TextualApp(App):
                 cell = text(age(seconds), "dim")
                 cell.truncate(column.width, overflow="ellipsis")
                 cell.pad_left(max(0, column.width - cell.cell_len))
-                table.update_cell(key, column.key, cell)
+                self.update_cell(table, key, column.key, cell)
+
+    @staticmethod
+    def update_cell(table, row, column, value):
+        if table.get_cell(row, column) != value:
+            table.update_cell(row, column, value)
 
     def show_selection(self, *, focus=True):
         for section in self.SECTIONS:
@@ -581,7 +592,16 @@ class TextualApp(App):
                 screen = replace(screen, runtime=replace(screen.runtime, phase="finishing"))
             now, width = self.clock(), self.size.width - overview.scrollbar_size_vertical
             queued = self.queued_text(screen)
-            header.update(header_lines(screen, now, width, self.ascii, queued))
+            runtime = screen.runtime
+            # Match each displayed clock, including fractional phase/deadline offsets.
+            header_key = (screen, width, self.ascii, queued, age(now - runtime.started_at),
+                          int(now - runtime.phase_since) if runtime.phase == "reviewing" else None,
+                          int(now * 4) if runtime.phase == "reviewing" and not self.ascii else None,
+                          (countdown(runtime.next_check_at - now) if runtime.next_check_at >= now else "overdue")
+                          if runtime.phase in ("sleeping", "backoff") and runtime.next_check_at is not None else None)
+            if header_key != self._header_key or self._render_failed:
+                header.update(header_lines(screen, now, width, self.ascii, queued), layout=False)
+                self._header_key = header_key
             # Account for the Overview scrollbar when the fixed blocks exceed the height.
             if snapshot is not self._last_snapshot or width != self._row_width:
                 self.rebuild_rows(screen, now, width)
@@ -616,7 +636,10 @@ class TextualApp(App):
                  + (f" · t retry · c copy fix · {self.screen_rate()}" if self.help_visible else ""))
         message = " · ".join(v for v in (self.message, screen.runtime.last_command.text
                                          if screen.runtime.last_command else "") if v)
-        self.query_one("#footer", Static).update(footer_text(1, hints, message))
+        key = (hints, message)
+        if key != self._footer_key or self._render_failed:
+            self.query_one("#footer", Static).update(footer_text(1, hints, message))
+            self._footer_key = key
 
     def action_move(self, delta):
         self.cursor = max(0, min(self.cursor + delta, len(self.rows) - 1))

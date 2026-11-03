@@ -6,7 +6,7 @@ from math import cos, floor, sin, sqrt, tau
 from time import localtime
 
 from rich.style import Style
-from rich.text import Text
+from rich.text import Span, Text
 
 
 @dataclass(frozen=True)
@@ -259,14 +259,15 @@ def _row(top, bottom, styles, ascii=False, no_color=False, marks=(), *,
                 chars[pos] = char
                 bg = cell_styles[pos].bgcolor
                 cell_styles[pos] = _accent_style(color or palette[level], bg.name)
-    result = Text(''.join(chars), no_wrap=True, overflow='crop')
+    spans = []
     if not (ascii or no_color):
         start = 0
         for end in range(1, len(pairs) + 1):
-            if end == len(pairs) or cell_styles[end] != cell_styles[start]:
-                result.stylize(cell_styles[start], start, end)
+            if end == len(pairs) or (cell_styles[end] is not cell_styles[start]
+                                     and cell_styles[end] != cell_styles[start]):
+                spans.append(Span(start, end, cell_styles[start]))
                 start = end
-    return result
+    return Text(''.join(chars), no_wrap=True, overflow='crop', spans=spans)
 
 
 def _repository_stars(width, repos):
@@ -372,11 +373,14 @@ def _raster(t, width, repos, checking, look, hour, phase, event_time):
                         accents[y][x] = AMBER_BEAM[_level(raster[y][x])]
             else:
                 shimmer = .22 + .78 * row_shimmer[y] * column_shimmer
-                glint = max(0., 1 - abs(slopes[x] + row_slope[y]) / .22) ** 2
-                path = lit * 1.7 * (.08 + .92 * glint) / (1 + moon_dx / (1.2 + max(0., depth) * .32) ** 2) if disc else 0.
-                coverage = min(1., depth + .5)
+                # Clamp directly in this per-pixel loop; the bounds and arithmetic stay the same.
+                glint = 1 - abs(slopes[x] + row_slope[y]) / .22
+                glint = glint ** 2 if glint > 0 else 0.
+                path = lit * 1.7 * (.08 + .92 * glint) / (1 + moon_dx / (1.2 + (depth if depth > 0 else 0.) * .32) ** 2) if disc else 0.
+                coverage = depth + .5 if depth < .5 else 1.
+                crest = 1 - abs(depth - .25)
                 raster[y][x] = raster[y][x] * (1 - coverage) + ((.35 if day else .12) + .23 * (1 - depth * depth_scale)
-                                + foam * max(0., 1 - abs(depth - .25))
+                                + foam * (crest if crest > 0 else 0.)
                                 + reflection * .42 * shimmer + path) * coverage
                 accents[y].pop(x, None)
     if look.events:

@@ -37,10 +37,17 @@ behind other screens. Fewer frames show the same scene at the same time; tempo s
 The Agent screen (`3`) shows `Screen: 10 fps`, or the reduced rate, `terminal behind` and the total
 frames skipped; expanded Overview help (`?`) shows it too.
 Set `LIGHTKEEPER_SCREEN_TRACE=1` to log a `screen-trace` JSON line to `run.log` every five seconds. Each
-window records UTC time, interval, rendered/skipped frames, maximum timer lateness, the deepest writer
-backlog, call counts and maximum durations of snapshot refresh and animation, and terminal width/height.
-High lateness or backlog with low durations means the terminal is behind; high durations mean the app is.
-Intervals, lateness and durations are in seconds. Empty or unwritable state directories are silently skipped.
+window records UTC time, target interval, focus and picture visibility, generated/skipped frames, maximum timer
+lateness, the deepest writer backlog, callback counts/durations, and terminal width/height. `rendered` counts
+picture updates prepared by the app, not terminal paints; the callback durations exclude Textual's deferred
+composition. High backlog indicates terminal pressure; lateness alone can also reflect deferred app work.
+Intervals, lateness and durations are in seconds. The trace uses the runner's logger.
+
+Picture frames repaint only changed rows and request layout only when their dimensions change. Timed
+cells, header and footer update only when their displayed values change. `LIGHTKEEPER_BENCH=1 make test`
+also checks the 5 ms main-thread CPU budget for color idle frames at 200×67 with 200 history rows,
+13 watched items and two alerts. The headless harness explicitly includes terminal serialization; it
+cannot measure terminal/emulator paint time. The separate raster budget remains 4 ms.
 ASCII/non-UTF-8
 and NO_COLOR terminals get a monochrome version of the same picture. The lighthouse watches rolling
 sine waves with eight fixed constellation slots: the first N light for N watched repositories,
