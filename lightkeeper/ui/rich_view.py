@@ -168,6 +168,30 @@ def idle_panel(screen, now, width, ascii=False, *, free_rows=14, no_color=False,
 
 
 def header_lines(screen: Screen, mono_now: float, width: int, ascii=False, queued=""):
+    return header_group(header_parts(screen, mono_now, width, ascii, queued), width)
+
+
+def header_group(parts, width: int):
+    """Two header rows from the four texts of `header_parts`; the right-hand text is dropped when it does not fit."""
+    header, right, stats, counts = parts
+    wide = width >= 140
+
+    def header_line(left, right, required=False):
+        table = Table.grid(expand=True)
+        table.add_column(no_wrap=True, overflow="ellipsis", ratio=1)
+        if (required and width >= 60) or (wide and width - right.cell_len > left.cell_len + 2):
+            table.add_column(no_wrap=True, overflow="ellipsis", justify="right", width=right.cell_len)
+            table.add_row(left, right)
+        else:
+            table.add_row(left)
+        return table
+    return Group(header_line(header, right), header_line(stats, counts, required=True))
+
+
+def header_parts(screen: Screen, mono_now: float, width: int, ascii=False, queued=""):
+    """The header's four texts: identity line, settings and uptime, today's counts, repository counts.
+    The screen compares them with the previous ones (Rich Text equality: plain text and spans) to skip
+    unchanged header updates, so every clock the header shows must be rendered here."""
     runtime = screen.runtime
     total = runtime.configured_repo_count if runtime.configured_repo_count is not None else len(runtime.repos)
     live = sum(repo not in runtime.dry_repos for repo in runtime.repos) if runtime.mode == "live" and runtime.live_lock_held else 0
@@ -221,15 +245,6 @@ def header_lines(screen: Screen, mono_now: float, width: int, ascii=False, queue
     shown_config = str(runtime.config_dir).replace(str(Path.home()), "~", 1)
     right = text(f"settings {shown_config} · {runtime.model}/{runtime.effort} · "
                  f"up {age(mono_now - runtime.started_at)}", "dim")
-    def header_line(left, right, required=False):
-        table = Table.grid(expand=True)
-        table.add_column(no_wrap=True, overflow="ellipsis", ratio=1)
-        if (required and width >= 60) or (wide and width - right.cell_len > left.cell_len + 2):
-            table.add_column(no_wrap=True, overflow="ellipsis", justify="right", width=right.cell_len)
-            table.add_row(left, right)
-        else:
-            table.add_row(left)
-        return table
     last = "last check -"
     if runtime.last_check_at is not None:
         snapshot_mono = screen.mono_at if screen.mono_at is not None else mono_now
@@ -237,8 +252,7 @@ def header_lines(screen: Screen, mono_now: float, width: int, ascii=False, queue
         last = f"last check {datetime.fromtimestamp(stamp):%H:%M:%S} {'ok' if runtime.last_check_ok else 'failed'} {runtime.last_check_seconds:.1f}s"
     counts = text(repo_count + (" · " + last if wide else ""), "dim")
     stats_width = width - counts.cell_len - 2 if width >= 60 else width
-    return Group(header_line(header, right),
-                 header_line(stats_text(screen, ascii, stats_width), counts, required=True))
+    return header, right, stats_text(screen, ascii, stats_width), counts
 
 
 def row_data(screen, rows, mono_now, width, ascii=False, historical=False):

@@ -71,6 +71,5 @@ belongs in its commit and pull request.
   notifications are overwritten by later events; deployment requests are their own threads.
 - 2026-09-17 · **Universal, not smart.** The code owns eligibility and writes; a model decides every request by
   a human-written rules file. No path globs, author lists or size ladders.
-
 - 2026-11-03 · **Keyboard focus is not picture visibility:** keep the adaptive 10 fps target on blur; pause only when the Overview picture is hidden, and retain backlog/lateness pacing and 30-frame recovery.
 - 2026-11-03 · **Render the already-sized idle rows directly:** preserve literal Rich Text, repaint changed rows without layout, and compare timed text before invalidating widgets; guard the whole color frame including Textual and serialization at 5 ms in the opt-in synthetic benchmark.

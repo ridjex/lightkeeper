@@ -29,7 +29,7 @@ from .screen_trace import ScreenTrace
 from .editor import Editor
 from .repos import Repositories, RepoForm, read_settings, error_text
 from .menu import Menu, ScreenForm
-from .rich_view import age, countdown, glyph, header_lines, footer_text, idle_panel, multiline, print_summary, row_data, text
+from .rich_view import age, countdown, glyph, header_group, header_parts, footer_text, idle_panel, multiline, print_summary, row_data, text
 
 
 class OverviewTable(DataTable, inherit_bindings=False):
@@ -541,7 +541,9 @@ class TextualApp(App):
 
     @staticmethod
     def update_cell(table, row, column, value):
-        if table.get_cell(row, column) != value:
+        # Rich Text equality ignores the base style, so compare it too.
+        current = table.get_cell(row, column)
+        if current != value or current.style != value.style:
             table.update_cell(row, column, value)
 
     def show_selection(self, *, focus=True):
@@ -592,15 +594,10 @@ class TextualApp(App):
                 screen = replace(screen, runtime=replace(screen.runtime, phase="finishing"))
             now, width = self.clock(), self.size.width - overview.scrollbar_size_vertical
             queued = self.queued_text(screen)
-            runtime = screen.runtime
-            # Match each displayed clock, including fractional phase/deadline offsets.
-            header_key = (screen, width, self.ascii, queued, age(now - runtime.started_at),
-                          int(now - runtime.phase_since) if runtime.phase == "reviewing" else None,
-                          int(now * 4) if runtime.phase == "reviewing" and not self.ascii else None,
-                          (countdown(runtime.next_check_at - now) if runtime.next_check_at >= now else "overdue")
-                          if runtime.phase in ("sleeping", "backoff") and runtime.next_check_at is not None else None)
+            # Rendering the four header texts is cheap; the widget update is not, so only a changed text updates it.
+            header_key = (width, *header_parts(screen, now, width, self.ascii, queued))
             if header_key != self._header_key or self._render_failed:
-                header.update(header_lines(screen, now, width, self.ascii, queued), layout=False)
+                header.update(header_group(header_key[1:], width), layout=False)
                 self._header_key = header_key
             # Account for the Overview scrollbar when the fixed blocks exceed the height.
             if snapshot is not self._last_snapshot or width != self._row_width:

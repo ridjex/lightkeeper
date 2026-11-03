@@ -24,8 +24,9 @@ class IdlePanel(Static):
         if layout or len(previous) != len(lines):
             self.refresh(layout=True)
         else:
+            # Rich Text equality ignores the base style, so compare it too.
             changed = [Region(0, y, self.size.width, 1) for y, (old, new) in enumerate(zip(previous, lines))
-                       if old != new]
+                       if old != new or old.style != new.style]
             if changed:
                 self.refresh(*changed)
 
