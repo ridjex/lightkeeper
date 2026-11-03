@@ -4,6 +4,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-11-03
+
 ### Fixed
 
 - Keep the visible idle picture smooth when keyboard focus moves to another pane or app; terminal
