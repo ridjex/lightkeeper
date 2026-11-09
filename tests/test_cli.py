@@ -199,6 +199,22 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(snapshot(), before)
                 self.assertFalse((config / 'migration.json').exists())
 
+    def test_status_with_lost_write_is_read_only_and_no_longer_unknown(self):
+        config = self.root / "config"
+        config.mkdir()
+        (config / "settings.toml").write_text('[identity]\nlogin="me"\n', encoding="utf-8")
+        state = self.root / "state"
+        journal = cli.Journal(state / "journal.jsonl")
+        for event in ("unknown", "lost"):
+            journal.append(kind="pr", key=("org/repo", 7, "head"), event=event, mode="live", policy="p1")
+        before = journal.path.read_bytes()
+        self.assertEqual(cli.main(["--status", "--config-dir", str(config), "--state-dir", str(state)]), 0)
+        summary = json.loads(self.out.getvalue())
+        self.assertEqual(summary["unknown"], [])
+        self.assertEqual(summary["settled"], 1)
+        self.assertEqual(journal.path.read_bytes(), before)
+        self.model.assert_not_called()
+
     def test_status_missing_config_directory_is_a_read_only_error(self):
         config = self.root / 'missing'
         self.assertEqual(cli.main(['--status', '--config-dir', str(config)]), 2)

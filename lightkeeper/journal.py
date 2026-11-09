@@ -2,13 +2,13 @@
 
 Events, per key (PR: repo, number, head sha; deployment: repo, run, attempt, environment):
   assessment / applied / would_<action> / nothing / ignore / defer / satisfied / unknown / unclear / error /
-  closed / notify / withheld / reopen / owner_attempt / owner_error.
+  closed / notify / withheld / reopen / owner_attempt / owner_error / lost.
   `owner_attempt` is unknown until an outcome; `owner_error` clears it without settling the head.
   `owner_approve` and owner-origin `satisfied` also persist owner takeover across later PR heads.
   `reopen` clears contextual settlement and cached assessment.
   `withheld` records a proposed action and reason but stays deferred, not final.
   `owner_approve`, `applied` with action approve and `satisfied` are final forever; `nothing`, `ignore`,
-  `would_*`, `unclear`, `error` and `applied` comment/request_changes are settled only for the same policy
+  `would_*`, `unclear`, `error`, `lost` and `applied` comment/request_changes are settled only for the same policy
   hash, mode and context fingerprint (a push, a check rerun, an edited description or edited rules re-open
   them). `closed` only stops watching the pull request."""
 from __future__ import annotations
@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 FOREVER_EVENTS = ("satisfied", "owner_approve")
-SETTLED_EVENTS = ("nothing", "ignore", "unclear", "error", "would_approve", "would_request_changes", "would_comment")
+SETTLED_EVENTS = ("nothing", "ignore", "unclear", "error", "lost", "would_approve", "would_request_changes", "would_comment")
 NOTIFICATIONS_KEPT = 20
 RECORD_VERSION = 2
 
@@ -152,7 +152,7 @@ class Journal:
             pr_key = f"{rec['key'][0]}#{rec['key'][1]}"
             if ev == "closed":
                 self._watched.pop(pr_key, None)
-            else:
+            elif ev != "lost":  # Reconciliation must not resume watching a previously closed PR.
                 self._watched[pr_key] = list(rec["key"][:2])
         if ev in FOREVER_EVENTS or (ev == "applied" and rec.get("action", "approve") == "approve"):
             self._forever[k] = ev
@@ -166,7 +166,7 @@ class Journal:
                 self._protected.discard(k)
             self._superseded.discard(k)
             self._defer.pop(k, None)
-            if ev == "applied":
+            if ev in ("applied", "lost"):
                 self._unknown.pop(k, None)
         elif ev in ("defer", "withheld"):
             if ev == "withheld":

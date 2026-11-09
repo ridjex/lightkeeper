@@ -73,6 +73,31 @@ class JournalTests(unittest.TestCase):
         journal.append(kind='pr', key=KEY, event='owner_attempt', mode='live', policy='p1')
         self.assertEqual(Journal(self.path).replay(), 2)
 
+    def test_lost_settles_context_and_clears_unknown_on_read_only_replay(self):
+        journal = Journal(self.path)
+        fields = dict(kind="pr", key=KEY, mode="live", policy="p1", fingerprint="context")
+        journal.append(event="unknown", **fields)
+        journal.append(event="lost", reason="write lost: GitHub never recorded it", **fields)
+        before = self.path.read_bytes()
+        replay = Journal(self.path)
+        replay.replay(read_only=True)
+        for state in (journal, replay):
+            self.assertEqual(state.unknown_records(), [])
+            self.assertEqual(state.settled_outcome(KEY), "lost")
+            self.assertTrue(state.is_final(KEY, "p1", "live", "context"))
+            self.assertFalse(state.is_final(KEY, "p2", "live", "context"))
+            self.assertFalse(state.is_final(KEY, "p1", "dry-run", "context"))
+            self.assertFalse(state.is_final(KEY, "p1", "live", "changed"))
+            self.assertEqual(state.summary()["settled"], 1)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_lost_does_not_resume_watching_a_closed_pr(self):
+        journal = Journal(self.path)
+        for event in ("unknown", "closed", "lost"):
+            journal.append(kind="pr", key=KEY, event=event, mode="live", policy="p1")
+        self.assertEqual(journal.watched_prs(), [])
+        self.assertEqual(journal.unknown_records(), [])
+
     def test_append_then_replay(self):
         j = Journal(self.path)
         j.append(kind="pr", key=KEY, event="applied", mode="live", policy="p1", reason="ok", review_id=1)

@@ -3,6 +3,7 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-11-09 · **Absent PR writes become lost:** only after a successful fetch plus closure, head movement or ten minutes of grace; preserve the original settlement context and owner matching, and leave attempt-ambiguous deployment history unchanged.
 - 2026-11-09 · **Empty blobs are fully visible:** accept their literal Git SHA without a patch; keep blob SHAs outside stored fingerprints to preserve settled outcomes.
 - 2026-10-23 · **The light poll reads check names so both paths deduplicate alike:** superseded runs must not wake a full fetch every poll.
 

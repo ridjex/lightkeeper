@@ -348,11 +348,12 @@ class PRDetail(Screen):
         post = detail.latest_post if detail else None
         if post is None:
             post = next((e for e in reversed(events) if e.state in (
-                "applied", "satisfied", "owner_approve", "withheld", "unknown", "owner_attempt", "nothing", "ignore",
+                "applied", "satisfied", "owner_approve", "withheld", "unknown", "owner_attempt", "lost", "nothing", "ignore",
                 "error", "owner_error", "unclear") or e.state.startswith("would_")), None)
         latest_outcome = post.state if post else ""
         outcome = ("Posted" if latest_outcome in ("applied", "owner_approve", "satisfied") else
                    "Dry-run" if latest_outcome.startswith("would_") else
+                   "Write lost" if latest_outcome == "lost" else
                    "Withheld" if latest_outcome == "withheld" else
                    "Outcome unknown" if latest_outcome in ("unknown", "owner_attempt") else "nothing posted")
         posted = text(outcome, "bold")

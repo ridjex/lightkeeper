@@ -42,6 +42,7 @@ RUNNING_JOB_STATES = ("queued", "in_progress", "pending", "requested")
 MAX_BACKOFF_S = 600
 FAST_POLL_S = 15
 REVIEWER_PAUSE_S = 900
+UNKNOWN_WRITE_GRACE_S = 600  # GitHub may lag after a 502; ten minutes exceeds its usual seconds-long delay.
 NOTIFICATION_WINDOW_S = 3 * 24 * 3600
 CI_WAIT_MAX_S = 3 * 3600          # checks still running after this long: tell the owner once, keep waiting
 _REVIEW_STATES = {"approve": "APPROVED", "request_changes": "CHANGES_REQUESTED", "comment": "COMMENTED"}
@@ -154,7 +155,7 @@ def item_label(kind: str, key) -> str:
 
 EVENT_WORDS = {"defer": "waiting", "nothing": "silent", "ignore": "skipped", "satisfied": "done by owner",
                "owner_approve": "approved by you", "owner_error": "owner write failed",
-               "assessment": "model says", "applied": "POSTED", "unknown": "write unknown", "unclear": "answer unclear",
+               "assessment": "model says", "applied": "POSTED", "unknown": "write unknown", "lost": "write lost", "unclear": "answer unclear",
                "notify": "told owner", "closed": "closed", "seen": "watching", "error": "write failed", "withheld": "withheld"}
 
 
@@ -609,8 +610,8 @@ class Runner:
 
     def _unknown_condition(self):
         count = sum(self._in_scope(r["key"][0]) for r in self.journal.unknown_records())
-        self.condition("unknown_write", f"{count} unknown write(s); reconciled automatically when GitHub confirms; "
-                       "otherwise left to you" if count else None)
+        self.condition("unknown_write", f"{count} unknown write(s); checking GitHub; absent PR reviews clear after "
+                       "10 minutes, closure or a new head" if count else None)
 
     # ---------- pull requests
     def process_pr(self, repo: str, number: int) -> str:
@@ -1020,13 +1021,14 @@ class Runner:
     # ---------- shared
     def _journal(self, kind: str, key, event: str, **fields) -> None:
         url = item_url(kind, key, fields)
-        self.journal.append(kind=kind, key=key, event=event, mode="dry-run" if event.startswith("would_") else self.mode(key[0]),
-                            policy=self.settings.judgement(key[0]).hash,
-                            components=self.settings.judgement(key[0]).components, url=url, **fields)
-        if kind == "pr" and (event in ("nothing", "ignore", "unclear", "error", "applied", "satisfied", "owner_approve", "unknown", "closed")
+        self.journal.append(kind=kind, key=key, event=event,
+                            mode=fields.pop("mode", "dry-run" if event.startswith("would_") else self.mode(key[0])),
+                            policy=fields.pop("policy", self.settings.judgement(key[0]).hash),
+                            components=fields.pop("components", self.settings.judgement(key[0]).components), url=url, **fields)
+        if kind == "pr" and (event in ("nothing", "ignore", "unclear", "error", "applied", "satisfied", "owner_approve", "unknown", "lost", "closed")
                              or event.startswith("would_")):
             self.commands.release(key)
-        if event in ("unknown", "applied", "satisfied", "owner_approve", "owner_attempt", "owner_error"):
+        if event in ("unknown", "applied", "satisfied", "owner_approve", "owner_attempt", "owner_error", "lost"):
             self._unknown_condition()
         word = EVENT_WORDS.get(event, event)
         if event.startswith("would_"):
@@ -1078,11 +1080,13 @@ class Runner:
                                           review_id=observed.review_id, reviewed_at=observed.submitted_at,
                                           reason="approved by you" if match else "approved by you on GitHub")
                             resolved += 1
-                        else:
-                            log(f"{kind} {key_str(key)}: earlier write outcome still unknown; leaving to a human")
-                        continue
-                    ok = any(r.author == self.settings.login and r.state == wanted and r.commit_sha == head
-                             and (action == "approve" or is_automated(r.body)) for r in pr.reviews)
+                            continue
+                        ok = False
+                    else:
+                        ok = any(r.author == self.settings.login and r.state == wanted and r.commit_sha == head
+                                 and (action == "approve" or is_automated(r.body)) for r in pr.reviews)
+                    lost = not ok and (pr.state in ("CLOSED", "MERGED") or pr.head_sha != head
+                                       or self.clock() - _parse_iso(rec["at"]) >= UNKNOWN_WRITE_GRACE_S)
                 else:
                     repo, run_id, attempt, env_id = key
                     if self.gh.run_by_id(repo, run_id).attempt != attempt:
@@ -1101,8 +1105,14 @@ class Runner:
                 self._journal(kind, key, "satisfied", reason="write found on GitHub after an unknown outcome",
                               source="observed")
                 resolved += 1
+            elif kind == "pr" and lost:
+                self._journal(kind, key, "lost", action=rec.get("action", "approve"),
+                              mode=rec["mode"], policy=rec["policy"], components={},  # Do not roll back the latest rule digests.
+                              fingerprint=rec.get("fingerprint"), origin=rec.get("origin"),
+                              reason="write lost: GitHub never recorded it", source="observed")
+                resolved += 1
             else:
-                log(f"{kind} {key_str(key)}: earlier write outcome still unknown; leaving to a human")
+                log(f"{kind} {key_str(key)}: earlier write outcome still unknown; will check again")
         return resolved
 
     def _guard(self, item: tuple[str, str, int], fn, count) -> str:

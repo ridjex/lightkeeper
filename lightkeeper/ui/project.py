@@ -13,7 +13,7 @@ from .model import Alert, DetailState, Event, HistoryRow, ItemRef, ItemRow, Runt
 ACTIONS = {"approve": "approved", "request_changes": "changes", "comment": "comment"}
 STATES = {"defer": "waiting", "satisfied": "approved", "nothing": "silent", "ignore": "yours",
           "owner_approve": "approved", "owner_error": "error", "owner_attempt": "unknown",
-          "closed": "closed", "unknown": "unknown", "error": "error", "unclear": "error", "withheld": "withheld"}
+          "closed": "closed", "unknown": "unknown", "lost": "lost", "error": "error", "unclear": "error", "withheld": "withheld"}
 
 
 def item_ref(kind, key, **fields) -> ItemRef:
@@ -62,13 +62,13 @@ class Projection:
         row = replace(row, item=item)
         change_text = ""
         # Reconciliation may refer to an older head; it cannot roll back a seen current head.
-        if event == "seen" or identity not in self._current or not (event in ("applied", "satisfied", "owner_approve")
+        if event == "seen" or identity not in self._current or not (event in ("applied", "satisfied", "owner_approve", "lost")
                                                                     and rec.get("source") == "observed"):
             self._current[identity] = revision
         if event in ("closed", "gate_gone"):
             if self._current.get(identity) == revision:
                 self._open.discard(identity)
-        elif kind == "pr" or event == "seen" or previous is None:
+        elif event != "lost" and (kind == "pr" or event == "seen" or previous is None):
             self._open.add(identity)
         if event == "notify":
             message = rec.get("text") or rec.get("reason") or ""
@@ -93,7 +93,7 @@ class Projection:
             if row.state == "changes" and not row.dry_run and event in ("nothing", "unclear"):
                 shown = "changes"                 # our block on this head still stands; "silent" would hide it
             since = row.since if (row.state, row.dry_run) == (shown, dry) else at
-            clear = event in ("satisfied", "owner_approve", "ignore", "closed") or (event == "applied" and state == "approved")
+            clear = event in ("satisfied", "owner_approve", "ignore", "closed", "lost") or (event == "applied" and state == "approved")
             row = replace(row, state=shown, why=why, since=since, dry_run=dry,
                           needs_you=None if clear else row.needs_you)
             meaningful = owner or (event not in ("defer", "satisfied") and not (event == "applied" and rec.get("source") == "observed"))
@@ -135,7 +135,7 @@ class Projection:
         self._details[key] = replace(
             detail,
             latest_post=latest if event in ("applied", "satisfied", "owner_approve", "withheld", "unknown",
-                                            "owner_attempt", "nothing", "ignore", "error", "owner_error", "unclear")
+                                            "owner_attempt", "lost", "nothing", "ignore", "error", "owner_error", "unclear")
             or dry else detail.latest_post,
             latest_body=latest.body if event == "satisfied" and rec.get("origin") == "owner" else latest.body or detail.latest_body,
             latest_session=latest.session or detail.latest_session,
@@ -154,7 +154,7 @@ class Projection:
 
         if event in ("unknown", "owner_attempt"):
             self._unknown[key] = item
-        elif event in ("applied", "satisfied", "owner_approve", "owner_error"):
+        elif event in ("applied", "satisfied", "owner_approve", "owner_error", "lost"):
             self._unknown.pop(key, None)
         self._rows[revision] = row
         retained = {self._current[identity][1:] for identity in self._open}

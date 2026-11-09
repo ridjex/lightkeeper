@@ -112,6 +112,15 @@ head's review in the owner's name; when the next head is not approved and the bl
 owner is told once. A 4xx on the POST is `error` (settled for this context, owner notified); a 5xx or a
 transport failure is `unknown` and reconciled against GitHub before anything else runs.
 
+A successful PR/reviews fetch first checks the existing review match (including owner-origin matching).
+If none exists, append `lost` when the PR is closed/merged, the recorded head has moved, or the record is
+at least ten minutes old. The grace period allows GitHub's short post-502 visibility lag. Fetch failures
+remain unknown and retry. `lost` clears the unknown set and alert, appears in History, and settles only
+the original judgement, mode and fingerprint; it neither claims an approval nor establishes owner takeover.
+Replay and `--status` read the event without writing. Existing records and the journal version are unchanged;
+Unpatched 0.1.10 tolerates but ignores `lost`, so the updated reader is required to see the resolved state. Deployment
+reconciliation is unchanged: its approval history is not scoped to an attempt, so a re-run still needs a human.
+
 ## 5. Discovery and finality
 
 - Between full ticks, one light GraphQL query per batch of up to 50 watched PRs reads head/state/draft,
@@ -123,7 +132,7 @@ transport failure is `unknown` and reconciled against GitHub before anything els
   requests only) ∪ every PR in the journal without a `closed` event (watched). A watched PR is forgotten
   when seen closed or merged; reopened, it is found again by search. A search failure does not stop the
   watched PRs from running.
-- Finality: `applied` approve and `satisfied` forever; `nothing`, `ignore`, `unclear`, `error`, `would_*`
+- Finality: `applied` approve and `satisfied` forever; `nothing`, `ignore`, `unclear`, `error`, `lost`, `would_*`
   and `applied` comment/request_changes per (repository judgement, effective mode, context fingerprint). Unknown writes are
   reconciled from GitHub before anything else runs.
 - Any exception on one item is logged and counted; the tick goes on. A 403 that is a rate limit backs off

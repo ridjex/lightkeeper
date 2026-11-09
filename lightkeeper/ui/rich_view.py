@@ -25,6 +25,7 @@ STATES = {
     "closed": ("↷", ">", "dim", "closed"),
     "merged": ("↷", ">", "dim", "merged"),
     "unknown": ("?", "?", "magenta", "unknown"),
+    "lost": ("–", "-", "dim", "write lost"),
     "error": ("!", "!", "bold red", "error"),
 }
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"

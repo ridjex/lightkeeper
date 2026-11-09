@@ -6,6 +6,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ### Fixed
 
+- Resolve unknown PR writes as lost after a successful fetch finds no review and the PR closes, changes
+  head, or ten minutes pass; clear alerts and retain the outcome in History and replay.
 - Treat empty Git blobs as visible without a patch, including added and removed empty files; binary and oversized files still block approval.
 
 ## [0.1.10] — 2026-11-03

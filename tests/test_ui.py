@@ -55,6 +55,26 @@ class ProjectionTests(unittest.TestCase):
     def row(self):
         return self.p.screen(self.runtime, NOW).watching[0]
 
+    def test_lost_clears_unknown_and_shows_history_without_rolling_back_head(self):
+        self.feed("unknown", mode="live", action="approve")
+        self.assertEqual(len(self.p.screen(self.runtime, NOW).unknown_items), 1)
+        self.feed("seen", key=["example/widget", 1, "bbbbbbb"])
+        self.feed("lost", source="observed", reason="write lost: GitHub never recorded it")
+        screen = self.p.screen(self.runtime, NOW)
+        self.assertEqual(screen.unknown_items, ())
+        self.assertEqual(screen.watching[0].item.head, "bbbbbbb")
+        lost = next(h for h in screen.history if h.state == "lost")
+        self.assertEqual(lost.why, "write lost: GitHub never recorded it")
+        self.assertEqual(dict(screen.stats.posted), {})
+
+    def test_lost_does_not_reopen_a_closed_row(self):
+        for event in ("unknown", "closed", "lost"):
+            self.feed(event, source="observed", reason="write lost: GitHub never recorded it")
+        screen = self.p.screen(self.runtime, NOW)
+        self.assertEqual(screen.watching, ())
+        self.assertEqual(screen.unknown_items, ())
+        self.assertEqual(screen.history[0].state, "lost")
+
     def test_fixture_states_stats_history(self):
         s = fixture_screen()
         by = {r.item.number: r for r in s.watching}

@@ -47,6 +47,90 @@ class LifecycleBase(unittest.TestCase):
                 (json.loads(line) for line in self.journal.path.read_text().splitlines())]
 
 
+class UnknownWriteLifecycle(LifecycleBase):
+    def unknown(self, *, origin=None, action="approve", **fields):
+        pr = make_pr()
+        self.gh.pr_snapshots[(pr.repo, pr.number)] = [pr]
+        runner = self.runner(reviewer=FakeReviewer([]))
+        self.journal.append(kind="pr", key=(pr.repo, pr.number, HEAD), event="unknown", mode="live",
+                            policy=runner.settings.judgement(pr.repo).hash, fingerprint=pr.fingerprint,
+                            components=runner.settings.judgement(pr.repo).components,
+                            at="1970-01-12T13:46:40Z", origin=origin, action=action, **fields)
+        return runner, pr
+
+    def test_absent_review_lost_after_closure_head_move_or_grace(self):
+        for origin in (None, "owner"):
+            for changes, age in (({"state": "MERGED"}, 0), ({"state": "CLOSED"}, 0),
+                                 ({"head_sha": "f" * 40}, 0), ({}, 600)):
+                with self.subTest(origin=origin, changes=changes, age=age):
+                    runner, pr = self.unknown(origin=origin)
+                    self.now = 1_000_000 + age
+                    self.gh.pr_snapshots[(pr.repo, pr.number)] = [dataclasses.replace(pr, **changes)]
+                    self.assertEqual(runner.reconcile_unknown(), 1)
+                    self.assertFalse(self.journal.unknown_records())
+                    rec = self.records()[-1]
+                    self.assertEqual((rec["event"], rec["origin"], rec["fingerprint"]),
+                                     ("lost", origin, pr.fingerprint))
+                    self.assertFalse(self.journal.owner_takeover(rec["key"]))
+                    self.assertEqual(runner.reconcile_unknown(), 0)
+                    if not changes:
+                        self.assertEqual(runner.process_pr(pr.repo, pr.number), "final")
+                    self.assertEqual(self.gh.writes, [])
+
+    def test_absent_review_waits_inside_grace(self):
+        runner, pr = self.unknown()
+        self.now += 599
+        self.assertEqual(runner.reconcile_unknown(), 0)
+        self.assertTrue(self.journal.unknown_records())
+        self.assertEqual(runner.process_pr(pr.repo, pr.number), "unknown")
+
+    def test_fetch_failure_keeps_unknown_even_after_grace(self):
+        runner, _ = self.unknown()
+        self.now += 3600
+        self.gh.pull_request = Mock(side_effect=GhTimeout(["api"], 30))
+        self.assertEqual(runner.reconcile_unknown(), 0)
+        self.assertTrue(self.journal.unknown_records())
+        self.assertEqual(len(self.records()), 1)
+
+    def test_matching_reviews_win_over_loss_conditions(self):
+        for action, state, body, event, origin in (
+            ("approve", "APPROVED", "", "satisfied", None),
+            ("comment", "COMMENTED", marker_line("opus", "abcdef", HEAD), "applied", None),
+            ("request_changes", "CHANGES_REQUESTED", marker_line("opus", "abcdef", HEAD), "applied", None),
+            ("approve", "APPROVED", "owner note", "owner_approve", "owner"),
+            ("approve", "APPROVED", "different manual note", "satisfied", "owner"),
+        ):
+            with self.subTest(action=action, event=event, origin=origin):
+                runner, pr = self.unknown(action=action, origin=origin, body="owner note")
+                self.now += 3600
+                review = Review("me", state, HEAD, body)
+                self.gh.pr_snapshots[(pr.repo, pr.number)] = [dataclasses.replace(pr, state="MERGED", reviews=(review,))]
+                self.assertEqual(runner.reconcile_unknown(), 1)
+                self.assertEqual(self.records()[-1]["event"], event)
+                self.assertFalse(self.journal.unknown_records())
+
+    def test_lost_preserves_original_settlement_context_and_clears_alert(self):
+        runner, pr = self.unknown()
+        old = self.journal.unknown_records()[0]
+        seen = []
+        runner.observer = lambda event, **fields: seen.append((event, fields))
+        runner._unknown_condition()
+        runner.settings = make_settings(rules="Changed rules", mode="dry-run")
+        runner._journal("pr", old["key"], "seen", title=pr.title)
+        current_components = runner.settings.judgement(pr.repo).components
+        self.now += 600
+        self.assertEqual(runner.reconcile_unknown(), 1)
+        rec = self.records()[-1]
+        self.assertEqual((rec["policy"], rec["mode"]), (old["policy"], old["mode"]))
+        self.assertEqual(self.journal.components[pr.repo], current_components)
+        replay = Journal(self.journal.path)
+        replay.replay(read_only=True)
+        self.assertEqual(replay.components[pr.repo], current_components)
+        alerts = [f["text"] for event, f in seen if event == "condition" and f["key"] == "unknown_write"]
+        self.assertIn("1 unknown write(s)", alerts[0])
+        self.assertIsNone(alerts[-1])
+
+
 class PullRequestLifecycle(LifecycleBase):
     def test_model_notes_only_alert_when_enabled(self):
         number = 10
