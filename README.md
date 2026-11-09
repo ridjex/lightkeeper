@@ -162,14 +162,10 @@ An empty file counts as visible: its empty Git blob has nothing to read, even wi
 - A dismissed automated review on the current head is a veto: one notification, no re-approval, even
   after an approval was recorded as final. A new head can be evaluated again. An earlier automated
   "changes requested" only triggers a block warning if it is still your latest decisive review.
-- A failed write with an uncertain response (a 5xx or transport failure) stays `unknown` while GitHub
-  is checked. A matching review settles it normally. After a successful fetch, an absent PR review is
-  recorded as `lost` once the PR closes or merges, its head moves, or ten minutes pass. This clears the
-  unknown-write alert and shows "write lost: GitHub never recorded it" in History; unchanged inputs stay
-  settled. Failed fetches keep retrying. Owner approvals use the same rules and retain their manual-review
-  matching. Deployment approvals retain their existing reconciliation, since approval history is not
-  scoped to a run attempt. Reconciliation of `lost` records requires the updated reader; unpatched 0.1.10 ignores
-  the new event and retains its earlier unknown entry.
+- A write whose outcome GitHub did not confirm (a 5xx or a transport failure) is `unknown` and checked
+  against GitHub on every tick. A review found there settles it. A review still absent ten minutes later
+  is recorded as `lost` ("write lost: GitHub never recorded it" in History), the alert clears, and the
+  same inputs are not written again. Deployment approvals stay `unknown` until a human decides.
 - Everything outside `repos` is ignored, including unknown writes awaiting reconciliation. Your own
   pull requests are ignored.
 - A 403/404 while fetching an item, without throttling, quarantines only that PR or run for the session;

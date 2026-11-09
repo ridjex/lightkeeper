@@ -6,9 +6,10 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ### Fixed
 
-- Resolve unknown PR writes as lost after a successful fetch finds no review and the PR closes, changes
-  head, or ten minutes pass; clear alerts and retain the outcome in History and replay.
-- Treat empty Git blobs as visible without a patch, including added and removed empty files; binary and oversized files still block approval.
+- An unknown pull request write whose review is still absent from GitHub ten minutes later is recorded as
+  `lost` and its alert clears, instead of staying "left to you" forever.
+- An added or removed empty file counts as visible: the approve floor no longer refuses pull requests that add
+  an empty `__init__.py`. Binary and oversized files still need a human.
 
 ## [0.1.10] — 2026-11-03
 

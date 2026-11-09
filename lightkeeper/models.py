@@ -74,8 +74,8 @@ class ChangedFile:
         """True when the change is visible, including empty blobs and pure renames without a patch."""
         if self.patch is not None:
             return True
-        if self.sha == "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391":  # Git's empty blob: nothing to read.
-            return True
+        if self.sha == "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" and self.status in ("added", "removed"):
+            return True  # Git's empty blob: nothing to read. A file emptied by a modification keeps its patch.
         return self.status in ("renamed", "copied") and self.additions + self.deletions == 0
 
 

@@ -112,14 +112,13 @@ head's review in the owner's name; when the next head is not approved and the bl
 owner is told once. A 4xx on the POST is `error` (settled for this context, owner notified); a 5xx or a
 transport failure is `unknown` and reconciled against GitHub before anything else runs.
 
-A successful PR/reviews fetch first checks the existing review match (including owner-origin matching).
-If none exists, append `lost` when the PR is closed/merged, the recorded head has moved, or the record is
-at least ten minutes old. The grace period allows GitHub's short post-502 visibility lag. Fetch failures
-remain unknown and retry. `lost` clears the unknown set and alert, appears in History, and settles only
-the original judgement, mode and fingerprint; it neither claims an approval nor establishes owner takeover.
-Replay and `--status` read the event without writing. Existing records and the journal version are unchanged;
-Unpatched 0.1.10 tolerates but ignores `lost`, so the updated reader is required to see the resolved state. Deployment
-reconciliation is unchanged: its approval history is not scoped to an attempt, so a re-run still needs a human.
+Reconciliation fetches the pull request and its reviews. A review by the user on the recorded head with the
+wanted state, or dismissed since, means the write happened (`satisfied`, `applied` or `owner_approve`). No such
+review ten minutes after the record (`UNKNOWN_WRITE_GRACE_S`: a review can appear seconds after a 502, never
+later) means it was lost: `lost` settles the original judgement, mode and fingerprint, clears the unknown set
+and the alert, and claims neither an approval nor owner takeover. A failed fetch stays unknown and is retried.
+A 0.1.10 reader ignores `lost` and keeps its unknown entry and alert. Deployment approvals are not scoped to a
+run attempt, so an unknown one still needs a human.
 
 ## 5. Discovery and finality
 

@@ -3,8 +3,8 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
-- 2026-11-09 · **Absent PR writes become lost:** only after a successful fetch plus closure, head movement or ten minutes of grace; preserve the original settlement context and owner matching, and leave attempt-ambiguous deployment history unchanged.
-- 2026-11-09 · **Empty blobs are fully visible:** accept their literal Git SHA without a patch; keep blob SHAs outside stored fingerprints to preserve settled outcomes.
+- 2026-11-09 · **An absent review ten minutes after an unknown write means the write was lost:** a dismissed review still counts as written; closure or a new head is not a shortcut (auto-merge right after a 502 is the race); blob SHAs stay out of fingerprints so settled outcomes hold.
+- 2026-11-09 · **An added or removed empty blob is visible without a patch;** a file emptied by a modification keeps its patch, so the rule stays off `modified`.
 - 2026-10-23 · **The light poll reads check names so both paths deduplicate alike:** superseded runs must not wake a full fetch every poll.
 
 - 2026-10-23 · **Model review alerts default off:** the owner can act on code-raised conditions; a non-approving review is the author's to act on, and History shows it anyway.

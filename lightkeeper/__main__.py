@@ -42,7 +42,7 @@ RUNNING_JOB_STATES = ("queued", "in_progress", "pending", "requested")
 MAX_BACKOFF_S = 600
 FAST_POLL_S = 15
 REVIEWER_PAUSE_S = 900
-UNKNOWN_WRITE_GRACE_S = 600  # GitHub may lag after a 502; ten minutes exceeds its usual seconds-long delay.
+UNKNOWN_WRITE_GRACE_S = 600  # a review can appear seconds after a 502; after ten minutes it never will
 NOTIFICATION_WINDOW_S = 3 * 24 * 3600
 CI_WAIT_MAX_S = 3 * 3600          # checks still running after this long: tell the owner once, keep waiting
 _REVIEW_STATES = {"approve": "APPROVED", "request_changes": "CHANGES_REQUESTED", "comment": "COMMENTED"}
@@ -610,8 +610,7 @@ class Runner:
 
     def _unknown_condition(self):
         count = sum(self._in_scope(r["key"][0]) for r in self.journal.unknown_records())
-        self.condition("unknown_write", f"{count} unknown write(s); checking GitHub; absent PR reviews clear after "
-                       "10 minutes, closure or a new head" if count else None)
+        self.condition("unknown_write", f"{count} unknown write(s); checking GitHub" if count else None)
 
     # ---------- pull requests
     def process_pr(self, repo: str, number: int) -> str:
@@ -1068,8 +1067,8 @@ class Runner:
                     pr = self.gh.pull_request(repo, number)
                     self._publish_pr_status(PRStatus.from_pr(pr))
                     if rec.get("origin") == "owner":
-                        manual = [r for r in pr.reviews if r.author == self.settings.login
-                                  and r.state == "APPROVED" and r.commit_sha == head and not is_automated(r.body)]
+                        manual = [r for r in pr.reviews if r.author == self.settings.login and r.commit_sha == head
+                                  and r.state in ("APPROVED", "DISMISSED") and not is_automated(r.body)]
                         digest = rec.get("body_digest") or hashlib.sha256(rec.get("body", "").encode()).hexdigest()
                         match = next((r for r in reversed(manual)
                                       if hashlib.sha256(r.body.encode()).hexdigest() == digest), None)
@@ -1083,10 +1082,11 @@ class Runner:
                             continue
                         ok = False
                     else:
-                        ok = any(r.author == self.settings.login and r.state == wanted and r.commit_sha == head
-                                 and (action == "approve" or is_automated(r.body)) for r in pr.reviews)
-                    lost = not ok and (pr.state in ("CLOSED", "MERGED") or pr.head_sha != head
-                                       or self.clock() - _parse_iso(rec["at"]) >= UNKNOWN_WRITE_GRACE_S)
+                        # A review GitHub recorded and later dismissed was still written.
+                        ok = any(r.author == self.settings.login and r.state in (wanted, "DISMISSED")
+                                 and r.commit_sha == head and (action == "approve" or is_automated(r.body))
+                                 for r in pr.reviews)
+                    lost = not ok and self.clock() - _parse_iso(rec["at"]) >= UNKNOWN_WRITE_GRACE_S
                 else:
                     repo, run_id, attempt, env_id = key
                     if self.gh.run_by_id(repo, run_id).attempt != attempt:

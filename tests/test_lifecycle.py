@@ -58,10 +58,9 @@ class UnknownWriteLifecycle(LifecycleBase):
                             at="1970-01-12T13:46:40Z", origin=origin, action=action, **fields)
         return runner, pr
 
-    def test_absent_review_lost_after_closure_head_move_or_grace(self):
+    def test_absent_review_lost_after_grace_whatever_the_pr_did(self):
         for origin in (None, "owner"):
-            for changes, age in (({"state": "MERGED"}, 0), ({"state": "CLOSED"}, 0),
-                                 ({"head_sha": "f" * 40}, 0), ({}, 600)):
+            for changes, age in (({"state": "MERGED"}, 600), ({"head_sha": "f" * 40}, 600), ({}, 600)):
                 with self.subTest(origin=origin, changes=changes, age=age):
                     runner, pr = self.unknown(origin=origin)
                     self.now = 1_000_000 + age
@@ -76,6 +75,22 @@ class UnknownWriteLifecycle(LifecycleBase):
                     if not changes:
                         self.assertEqual(runner.process_pr(pr.repo, pr.number), "final")
                     self.assertEqual(self.gh.writes, [])
+
+    def test_closure_or_head_move_inside_grace_keeps_unknown(self):
+        for changes in ({"state": "MERGED"}, {"head_sha": "f" * 40}):
+            with self.subTest(changes=changes):
+                runner, pr = self.unknown()
+                self.gh.pr_snapshots[(pr.repo, pr.number)] = [dataclasses.replace(pr, **changes)]
+                self.assertEqual(runner.reconcile_unknown(), 0)
+                self.assertTrue(self.journal.unknown_records())
+
+    def test_dismissed_review_counts_as_written(self):
+        runner, pr = self.unknown()
+        self.now += 3600
+        review = Review(runner.settings.login, "DISMISSED", HEAD, "🔭 Approved: fine")
+        self.gh.pr_snapshots[(pr.repo, pr.number)] = [dataclasses.replace(pr, state="MERGED", reviews=(review,))]
+        self.assertEqual(runner.reconcile_unknown(), 1)
+        self.assertEqual(self.records()[-1]["event"], "satisfied")
 
     def test_absent_review_waits_inside_grace(self):
         runner, pr = self.unknown()
