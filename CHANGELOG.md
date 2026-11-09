@@ -4,6 +4,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-11-09
+
 ### Fixed
 
 - Deployment gates are found again: GitHub's approval notifications carry no run URL, so every one was
