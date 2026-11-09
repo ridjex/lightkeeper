@@ -75,5 +75,4 @@ belongs in its commit and pull request.
   a human-written rules file. No path globs, author lists or size ladders.
 - 2026-11-03 · **Keyboard focus is not picture visibility:** keep the adaptive 10 fps target on blur; pause only when the Overview picture is hidden, and retain backlog/lateness pacing and 30-frame recovery.
 - 2026-11-03 · **Render the already-sized idle rows directly:** preserve literal Rich Text, repaint changed rows without layout, and compare timed text before invalidating widgets; guard the whole color frame including Textual and serialization at 5 ms in the opt-in synthetic benchmark.
-
-- Deployment notifications are repository wake signals, not run identities: null URLs trigger a waiting-run listing once per repository with a fresh request.
+- 2026-11-09 · **Deployment notifications are wake signals, not run identities:** GitHub sends them without a run URL, so a fresh request lists the repository's waiting runs once; pending gates are the truth.

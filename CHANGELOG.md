@@ -4,7 +4,10 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-- Discover deployment gates from fresh approval notifications with null run URLs by listing the repository’s waiting workflow runs.
+### Fixed
+
+- Deployment gates are found again: GitHub's approval notifications carry no run URL, so every one was
+  dropped and no gate was ever judged. A notification now wakes a listing of the repository's waiting runs.
 
 ## [0.1.11] — 2026-11-09
 
