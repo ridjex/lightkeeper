@@ -141,8 +141,11 @@ not reported yet stay pending; required flags and declarations are matched by ch
 malformed, truncated or head-raced lookup (or a missing PR node ID) falls back to waiting for every
 check, as before, with one line in run.log per repository, pull request and head.
 
-Deployments waiting for your approval (found through your GitHub notifications) are judged from the
-workflow, every job and the logs before the gate; the model answers `approve | ignore`.
+Deployment approval notifications wake discovery for their repository, even when the notification has no
+run URL. Once per repository with a fresh request, lightkeeper lists up to 50 waiting workflow runs and
+checks their pending environments for your approval permission. Journaled pending gates keep being
+checked after notifications age out; other repositories are not swept. The model judges the workflow,
+every job and the logs before the gate and answers `approve | ignore`.
 
 A binary file without a readable patch always needs a human: the screen raises a needs-you alert,
 highlights its header badge and turns the lighthouse beam amber until you decide.

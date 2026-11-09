@@ -303,16 +303,16 @@ def parse_pending(items: list[dict]) -> list[PendingEnvironment]:
                                bool(p.get("current_user_can_approve"))) for p in items]
 
 
-def parse_approval_requests(items: list[dict]) -> list[tuple[str, int, str]]:
+def parse_approval_requests(items: list[dict]) -> list[tuple[str, int | None, str]]:
     out = []
     for n in items:
         subject = n.get("subject") or {}
         if n.get("reason") != "approval_requested" or subject.get("type") != "WorkflowRun":
             continue
         url = subject.get("url") or ""
-        if not url.rsplit("/", 1)[-1].isdigit():
-            continue
-        out.append(((n.get("repository") or {}).get("full_name", ""), int(url.rsplit("/", 1)[-1]), n.get("updated_at", "")))
+        tail = url.rsplit("/", 1)[-1]
+        out.append(((n.get("repository") or {}).get("full_name", ""),
+                    int(tail) if tail.isdigit() else None, n.get("updated_at", "")))
     return out
 
 
@@ -372,11 +372,15 @@ class Gh:
             found[(item["repository"]["nameWithOwner"], int(item["number"]))] = None
         return sorted(found), len(items) >= SEARCH_LIMIT
 
-    def approval_requests(self, since_iso: str) -> list[tuple[str, int, str]]:
+    def approval_requests(self, since_iso: str) -> list[tuple[str, int | None, str]]:
         """(repo, run_id, updated_at) for every notification asking for a deployment approval since `since_iso`.
         Notifications are only the wake-up signal; pending_deployments is the truth."""
         pages = self.json(["api", f"notifications?all=true&since={since_iso}&per_page=100", "--paginate", "--slurp"])
         return parse_approval_requests([n for page in pages for n in page])
+
+    def waiting_runs(self, repo: str) -> list[WorkflowRun]:
+        items = self.json(["api", f"repos/{repo}/actions/runs?status=waiting&per_page=50"])
+        return parse_runs(repo, items["workflow_runs"])
 
     def pull_request(self, repo: str, number: int) -> PullRequest:
         view = self.json(["pr", "view", str(number), "-R", repo, "--json", PR_VIEW_FIELDS])

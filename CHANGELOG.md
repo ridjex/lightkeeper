@@ -4,6 +4,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+- Discover deployment gates from fresh approval notifications with null run URLs by listing the repository’s waiting workflow runs.
+
 ## [0.1.11] — 2026-11-09
 
 ### Fixed

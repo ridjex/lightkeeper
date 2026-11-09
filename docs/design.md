@@ -65,8 +65,12 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   and log once per repository, PR and head. Required flags are excluded from the fingerprint.
   GitHub's changed-file count must equal the files fetched, else `nothing` + notification. A missing patch
   (binary or too large) is shown to the model as such; the rules say when that is acceptable.
-- Deployment: unchanged from v2 (pending environment with `current_user_can_approve`, found via
-  notifications `reason = approval_requested`, filtered by enabled repositories with `deployments = true`; jobs still running → `defer`).
+- Deployment: `approval_requested` WorkflowRun notifications name the repository and update time;
+  a run URL is optional. Fresh requests trigger one `actions/runs?status=waiting&per_page=50` listing
+  per enabled repository with `deployments = true`, then the existing pending-environment path checks
+  `current_user_can_approve`. Settled runs are remembered; journaled pending gates keep being checked
+  without fresh notifications. Failed discovery retries; there is no sweep of every repository.
+  Jobs still running → `defer`.
 - Context over the byte cap → `nothing` + notification, no call.
 - Model output must match the contract; anything else is `unclear`: settled for that input, owner notified.
   The CLI giving up on one input (max turns, prompt too long) is `unclear` too, so one bad PR never pauses

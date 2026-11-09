@@ -226,6 +226,7 @@ class Runner:
         self._engine_probed = False
         self.quarantined: set[tuple[str, str, int]] = set()  # (kind, repo, PR number or run id)
         self.seen_runs: dict[tuple[str, int], str] = {}       # (repo, run_id) -> notification updated_at, once settled
+        self.seen_requests: dict[str, str] = {}  # repository -> successfully discovered notification time
         self._default_branch: dict[str, str] = {}
         self._pr_statuses: dict[tuple[str, int], PRStatus] = {}
         self.fast_poll_interval = FAST_POLL_S
@@ -1225,6 +1226,7 @@ class Runner:
             self.global_mode = "dry-run"
         if settings.repos != self.settings.repos:
             self.seen_runs.clear()
+            self.seen_requests.clear()
         for repo in settings.repos:
             before = (self.settings.judgement(repo).components if repo in self.settings.repos
                       else self.journal.components.get(repo))
@@ -1236,6 +1238,7 @@ class Runner:
                 log(f"{repo}: {text}; settled outcomes will be re-evaluated")
                 self.observe("policy", repo=repo, text=text)
                 self.seen_runs.clear()
+                self.seen_requests.clear()
             self._reported_components[repo] = settings.judgement(repo).components
         self.settings = settings
         self.observe("policy", login=settings.login, mode="live" if can_be_live(settings, self.global_mode) else "dry-run",
@@ -1362,9 +1365,26 @@ class Runner:
             count("error")
             requests = []
         todo: dict[tuple[str, int], str | None] = {}
+        fresh: dict[str, str] = {}
+        direct: dict[str, set[int]] = {}
         for repo, run_id, updated_at in requests:
-            if self._deployments(repo) and self.seen_runs.get((repo, run_id)) != updated_at:
-                todo[(repo, run_id)] = updated_at
+            if self._deployments(repo) and updated_at > self.seen_requests.get(repo, ""):
+                fresh[repo] = max(fresh.get(repo, ""), updated_at)
+                if run_id is not None:
+                    direct.setdefault(repo, set()).add(run_id)
+        discovered = {}
+        for repo, updated_at in fresh.items():
+            try:
+                run_ids = {run.run_id for run in self.gh.waiting_runs(repo)} | direct.get(repo, set())
+            except (GhError, GhTimeout) as exc:
+                self._rate_limited |= isinstance(exc, GhError) and exc.rate_limited
+                log(f"{repo}: waiting runs unavailable, will retry next tick ({exc})")
+                count("error")
+                continue
+            discovered[repo] = updated_at
+            for run_id in sorted(run_ids):
+                if self.seen_runs.get((repo, run_id)) != updated_at:
+                    todo[(repo, run_id)] = updated_at
         for key in self.journal.pending_gates():    # pending gates outlive the notification window
             repo, run_id = key[0], key[1]
             if self._deployments(repo) and (repo, run_id) not in todo:
@@ -1377,8 +1397,11 @@ class Runner:
                          progress=(index, len(todo_prs) + len(todo)))
             outcome = self._guard(("deployment", repo, run_id),
                                   lambda repo=repo, run_id=run_id: self.process_run(repo, run_id), count)
+            if outcome in ("error", "quarantined"):
+                discovered.pop(repo, None)  # A failure before journaling a gate must remain discoverable.
             if outcome in ("applied", "ignore", "unclear", "satisfied", "would_approve", "final", "unknown") and updated_at:
                 self.seen_runs[(repo, run_id)] = updated_at    # only a settled run is remembered
+        self.seen_requests.update(discovered)
         return counts
 
 

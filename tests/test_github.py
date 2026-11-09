@@ -458,6 +458,20 @@ class GhTests(unittest.TestCase):
         self.assertEqual(args.count("--repo"), 2)
         self.assertIn("user-review-requested:me", args)              # direct requests only
 
+    def test_null_url_approval_notification_and_waiting_runs(self):
+        notification = {"reason": "approval_requested", "updated_at": "2026-11-09T09:01:26Z",
+                        "subject": {"title": "someone requested your review to deploy to an environment",
+                                    "url": None, "latest_comment_url": None, "type": "WorkflowRun"},
+                        "repository": {"full_name": "org/repo"}}
+        runner = FakeRunner(stdout=json.dumps([[notification]]))
+        gh = Gh(runner=runner)
+        self.assertEqual(gh.approval_requests("2026-11-01T00:00:00Z"),
+                         [("org/repo", None, "2026-11-09T09:01:26Z")])
+        runner.stdout = json.dumps({"workflow_runs": [{"id": 100, "status": "waiting"}]})
+        self.assertEqual([run.run_id for run in gh.waiting_runs("org/repo")], [100])
+        self.assertEqual(runner.calls[-1][0],
+                         ["gh", "api", "repos/org/repo/actions/runs?status=waiting&per_page=50"])
+
     def test_parse_approval_requests(self):
         items = [
             {"reason": "approval_requested", "updated_at": "2026-10-10T12:00:00Z",

@@ -340,7 +340,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(r.tick(), {"final": 1})
         self.assertEqual(r.quarantined, {("pr", "org/repo", 7)})
         self.assertEqual(sum(c.args == ("org/repo", 7) for c in self.gh.pull_request.call_args_list), 1)
-        self.assertEqual(self.gh.pending_deployments.call_count, 2)
+        self.assertEqual(self.gh.pending_deployments.call_count, 1)  # unchanged notification, no journaled gate
         self.assertEqual(self.gh.writes[0][2], 8)
 
     def test_reconciliation_skips_removed_repositories(self):
@@ -773,6 +773,42 @@ class DeploymentLifecycle(LifecycleBase):
         self.gh.logs[PLAN_JOB.job_id] = log
         self.gh.files_at[(run.repo, f".github/workflows/{run.workflow_file}")] = "on: workflow_dispatch\n"
         return run
+
+    def test_null_notifications_list_once_and_respect_scope_and_seen_runs(self):
+        from unittest.mock import Mock
+        self.arm()
+        stamp = "2026-11-09T09:01:26Z"
+        self.gh.notifications = [("org/repo", None, stamp), ("org/repo", None, stamp),
+                                 ("org/private", None, stamp), ("outside/repo", None, stamp)]
+        settings = make_settings()
+        settings = dataclasses.replace(settings, repos={
+            name: dataclasses.replace(repo, deployments=name == "org/repo")
+            for name, repo in settings.repos.items()})
+        self.gh.waiting_runs = Mock(wraps=self.gh.waiting_runs)
+        reviewer = FakeReviewer([IGNORE])
+        r = self.runner(policy=settings, reviewer=reviewer)
+        self.assertEqual(r.tick(), {"ignore": 1})
+        self.gh.waiting_runs.assert_called_once_with("org/repo")
+        self.assertEqual(r.seen_runs[("org/repo", 100)], stamp)
+        # Once a pending gate disappears, a repeated notification cannot revive the run.
+        self.gh.pending[("org/repo", 100)] = []
+        r.tick()
+        self.assertEqual(r.tick(), {})
+        self.assertEqual(reviewer.calls, 1)
+        self.assertEqual(self.gh.waiting_runs.call_count, 1)
+        self.gh.notifications = [("org/repo", None, "2026-11-09T10:00:00Z")]
+        r.tick()
+        self.assertEqual(self.gh.waiting_runs.call_count, 2)
+
+    def test_waiting_listing_failure_retries_without_blocking_pending_gates(self):
+        from unittest.mock import Mock
+        self.arm()
+        r = self.runner(reviewer=FakeReviewer([IGNORE]))
+        self.gh.waiting_runs = Mock(side_effect=[GhError(["api"], 1, "HTTP 502"), self.gh.runs])
+        self.assertEqual(r.tick(), {"error": 1})
+        self.assertEqual(r.seen_requests, {})
+        self.assertEqual(r.tick(), {"ignore": 1})
+        self.assertEqual(self.gh.waiting_runs.call_count, 2)
 
     def test_running_jobs_defer_without_model_call(self):
         from lightkeeper.models import Job

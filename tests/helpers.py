@@ -77,6 +77,9 @@ class FakeGh:
     def approval_requests(self, since_iso):
         return list(self.notifications)
 
+    def waiting_runs(self, repo):
+        return [run for run in self.runs if run.repo == repo and run.status == "waiting"]
+
     def pull_request(self, repo, number):
         seq = self.pr_snapshots[(repo, number)]
         return seq.pop(0) if len(seq) > 1 else seq[0]
