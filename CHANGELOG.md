@@ -4,6 +4,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-11-09
+
 ### Fixed
 
 - An unknown pull request write whose review is still absent from GitHub ten minutes later is recorded as
