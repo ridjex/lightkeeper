@@ -73,6 +73,8 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   the rest. CLI failures (auth, timeout, crash) pause model calls for 15 minutes and `defer`.
 - `approve` floor, checked by code after the model: bot author, failed check, patch not visible →
   `nothing` + notification. The rules say the same; the floor exists because the model reads untrusted text.
+  An empty Git blob counts as visible without a patch, including a removed empty file; binary and
+  oversized files without patches remain incomplete. Blob SHAs do not enter the context fingerprint.
 - Removed as reviewer before the tool ever reviewed → wait (the author handed it to someone else; a
   re-request resumes). Removed after the tool reviewed (GitHub does that on every submitted review) → still
   watched. Any manual review by the owner, a comment included, ends the tool's involvement with that PR.

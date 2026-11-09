@@ -269,7 +269,8 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
                      for c in view.get("comments") or [])
     changed = tuple(
         ChangedFile(path=f["filename"], previous_path=f.get("previous_filename"), status=f.get("status", ""),
-                    additions=int(f.get("additions", 0)), deletions=int(f.get("deletions", 0)), patch=f.get("patch"))
+                    additions=int(f.get("additions", 0)), deletions=int(f.get("deletions", 0)), patch=f.get("patch"),
+                    sha=f.get("sha"))
         for f in files
     )
     return PullRequest(

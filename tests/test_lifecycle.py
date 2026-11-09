@@ -555,7 +555,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(r.process_pr("org/repo", 7), "final")
 
     def test_missing_patch_floor_names_file_and_owner_action_once(self):
-        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(files=(make_file('report.pdf', patch=None),))]
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(files=(make_file('report.pdf', patch=None, sha="b" * 40),))]
         r = self.runner(reviewer=FakeReviewer([APPROVE]))
         self.assertEqual(r.process_pr("org/repo", 7), "nothing")
         self.assertEqual(self.gh.writes, [])

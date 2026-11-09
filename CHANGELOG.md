@@ -4,6 +4,10 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat empty Git blobs as visible without a patch, including added and removed empty files; binary and oversized files still block approval.
+
 ## [0.1.10] — 2026-11-03
 
 ### Fixed

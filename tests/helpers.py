@@ -11,8 +11,8 @@ RULES = "# Rules\n\n- Approve docs-only changes by humans.\n- Never approve bots
 
 
 def make_file(path="docs/readme.md", additions=1, deletions=1, status="modified", previous_path=None,
-              patch="@@ -1 +1 @@\n-old\n+new"):
-    return ChangedFile(path, previous_path, status, additions, deletions, patch)
+              patch="@@ -1 +1 @@\n-old\n+new", sha=None):
+    return ChangedFile(path, previous_path, status, additions, deletions, patch, sha)
 
 
 def make_pr(**overrides) -> PullRequest:

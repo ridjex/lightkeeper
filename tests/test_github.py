@@ -104,6 +104,15 @@ class ParseTests(unittest.TestCase):
                     self.assertIn(failed["detailsUrl"], context)
                     self.assertIn(success["detailsUrl"], context)
 
+    def test_parse_file_blob_sha(self):
+        sha = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+        files = [{"filename": "__init__.py", "status": "added", "additions": 0,
+                  "deletions": 0, "changes": 0, "sha": sha}, {"filename": "old.bin"}]
+        pr = parse_pull_request("org/repo", load("pr_view.json"), files, [])
+        self.assertEqual(pr.files[0].sha, sha)
+        self.assertTrue(pr.files[0].is_complete)
+        self.assertIsNone(pr.files[1].sha)
+
     def test_parse_pull_request(self):
         pr = parse_pull_request("org/repo", load("pr_view.json"), load("pr_files.json"), load("pr_reviews.json"))
         self.assertEqual((pr.repo, pr.number, pr.author, pr.state, pr.is_draft), ("org/repo", 42, "alice", "OPEN", False))

@@ -67,10 +67,14 @@ class ChangedFile:
     deletions: int
     patch: str | None    # None when GitHub omits it (binary or too large)
 
+    sha: str | None = None
+
     @property
     def is_complete(self) -> bool:
-        """True when the diff fully represents the change (a pure rename has no patch and is fine)."""
+        """True when the change is visible, including empty blobs and pure renames without a patch."""
         if self.patch is not None:
+            return True
+        if self.sha == "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391":  # Git's empty blob: nothing to read.
             return True
         return self.status in ("renamed", "copied") and self.additions + self.deletions == 0
 

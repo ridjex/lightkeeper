@@ -146,6 +146,7 @@ workflow, every job and the logs before the gate; the model answers `approve | i
 
 A binary file without a readable patch always needs a human: the screen raises a needs-you alert,
 highlights its header badge and turns the lighthouse beam amber until you decide.
+An empty file counts as visible: its empty Git blob has nothing to read, even without a patch.
 
 ## What the code guarantees, whatever the rules say
 
@@ -155,7 +156,7 @@ highlights its header badge and turns the lighthouse beam amber until you decide
   (`commit_id`). One review per head and action: a crash after posting never posts twice.
 - Three objective floors an `approve` cannot cross, whatever the model was talked into: a bot author, a
   failed check, a file whose patch is not visible. The same three are in `rules.md`; the code only repeats
-  them.
+  them. An empty file (identified by its empty Git blob) counts as visible, including when removed.
 - One decision per pull request head (or per run attempt). A push, a check rerun, an edited description
   or edited rules re-open it; your own review, approval or a closed pull request end it.
 - A dismissed automated review on the current head is a veto: one notification, no re-approval, even
