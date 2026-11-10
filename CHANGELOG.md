@@ -4,6 +4,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-11-10
+
 ### Changed
 
 - Deployment reviews show the model the changes since the last successful run of the same workflow on the
