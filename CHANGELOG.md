@@ -4,6 +4,13 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-11-10
+
+### Changed
+
+- A deployment gate the model leaves to you (`ignore`) now raises an alert with the model's reason, a
+  `needs you` state and a desktop notification. Before, it was a plain `yours` row that was easy to miss.
+
 ## [0.1.13] — 2026-11-10
 
 ### Changed

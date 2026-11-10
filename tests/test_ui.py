@@ -472,10 +472,17 @@ class IntegrationTests(unittest.TestCase):
         self.journal.observer = p.feed
         r = self.runner([Decision("ignore", "manual", "ai")])
         r.tick()
-        self.assertEqual(len(p.screen(Runtime(repos=(run.repo,)), NOW).watching), 1)
+        screen = p.screen(Runtime(repos=(run.repo,)), NOW)
+        self.assertEqual(len(screen.watching), 1)
+        self.assertEqual(screen.watching[0].needs_you, "left to you: manual")    # a gate the model leaves needs the owner
+        self.assertEqual(len(screen.alerts), 1)
+        r.tick()                                                                 # settled: no second notification
+        self.assertEqual(self.notifier.call_count, 1)
         self.gh.pending[(run.repo, run.run_id)] = []
         r.tick()
-        self.assertFalse(p.screen(Runtime(repos=(run.repo,)), NOW).watching)
+        screen = p.screen(Runtime(repos=(run.repo,)), NOW)
+        self.assertFalse(screen.watching)
+        self.assertFalse(screen.alerts)
 
     def test_gate_can_reappear_at_same_attempt(self):
         self.gh.pr_snapshots.clear()

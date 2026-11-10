@@ -1004,7 +1004,11 @@ class Runner:
         if decision.outcome in ("satisfied", "ignore", "unclear"):
             self._journal(kind, key, decision.outcome, reason=decision.reason, source=decision.source,
                           fingerprint=fingerprint, **decision.data)
-            self._notify(kind, key, decision.notify)
+            notify = decision.notify
+            if decision.outcome == "ignore" and decision.source == "ai":
+                # A gate waits for a person: when the model will not approve it, the owner has to know.
+                notify = f"{key[0]}#{key[1]}: left to you: {decision.reason}"
+            self._notify(kind, key, notify)
             return decision.outcome
         if decision.outcome == "defer":
             self._defer(kind, key, decision.reason)

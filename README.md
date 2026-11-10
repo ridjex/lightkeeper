@@ -145,7 +145,8 @@ Deployment approval notifications wake discovery for their repository, even when
 run URL. Once per repository with a fresh request, lightkeeper lists up to 50 waiting workflow runs and
 checks their pending environments for your approval permission. Journaled pending gates keep being
 checked after notifications age out; other repositories are not swept. The model judges the workflow,
-every job and the logs before the gate and answers `approve | ignore`.
+every job and the logs before the gate and answers `approve | ignore`. A gate the model leaves to you
+raises an alert with its reason and a desktop notification; it clears when the gate is gone.
 It also sees file changes since the newest earlier successful run of the same workflow on the same branch
 (looked up among 20 successful runs); unavailable comparisons and incomplete patches are marked.
 GitHub limits comparisons to 300 files, and a deployment prompt over the shared 400,000-byte context cap

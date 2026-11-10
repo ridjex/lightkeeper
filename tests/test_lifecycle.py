@@ -834,11 +834,13 @@ class DeploymentLifecycle(LifecycleBase):
         reviewer = FakeReviewer([IGNORE, IGNORE])
         r = self.runner(reviewer=reviewer)
         self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
-        before = self.records()[-1]["fingerprint"]
+        def ignored():
+            return [rec for rec in self.records() if rec["event"] == "ignore"][-1]["fingerprint"]
+        before = ignored()
         self.assertEqual(r.process_run(run.repo, run.run_id), "final")
         self.gh.previous_success.return_value = make_run(run_id=99, head_sha="b" * 40)
         self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
-        self.assertNotEqual(self.records()[-1]["fingerprint"], before)
+        self.assertNotEqual(ignored(), before)
         self.assertEqual(reviewer.calls, 2)
 
     def test_oversized_deployment_comparison_alerts_without_model_or_write(self):

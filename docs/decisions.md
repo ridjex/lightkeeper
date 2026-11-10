@@ -80,3 +80,5 @@ belongs in its commit and pull request.
 - 2026-11-09 · **Deployment notifications are wake signals, not run identities:** GitHub sends them without a run URL, so a fresh request lists the repository's waiting runs once; pending gates are the truth.
 - 2026-11-10 · **A deployment is judged by what changed since the last success:** the gate fingerprint carries the
   base of that comparison, so a new earlier success re-opens the gate; the prompt frame itself is unchanged.
+- 2026-11-10 · **A gate the model leaves is the owner's to know about:** a deployment gate waits for a person, so
+  a model `ignore` raises the same alert as a code-raised condition; eligibility ignores stay silent.
