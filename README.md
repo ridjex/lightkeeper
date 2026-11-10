@@ -25,8 +25,8 @@ repository, read the next section.
 
 - **To Anthropic, through your `claude` CLI account:** for every pull request it reviews, the title,
   description, diff, earlier reviews and comments, check results and the tail of each failed CI log; for
-  deployment gates, the workflow file and job logs. This happens in dry-run too. Make sure your employer
-  allows sending this code to Anthropic under your account's terms.
+  deployment gates, the workflow file, job logs and changes since the last successful run. This happens in
+  dry-run too. Make sure your employer allows sending this code to Anthropic under your account's terms.
 - **To GitHub, as you:** reviews and deployment approvals are posted with your `gh` login. GitHub attributes
   them to you; to your team and to branch protection they are your reviews, so an approval counts toward
   required approvals and CODEOWNERS. There is no GitHub App to install or revoke. Agree on this with your
@@ -146,6 +146,10 @@ run URL. Once per repository with a fresh request, lightkeeper lists up to 50 wa
 checks their pending environments for your approval permission. Journaled pending gates keep being
 checked after notifications age out; other repositories are not swept. The model judges the workflow,
 every job and the logs before the gate and answers `approve | ignore`.
+It also sees file changes since the newest earlier successful run of the same workflow on the same branch
+(looked up among 20 successful runs); unavailable comparisons and incomplete patches are marked.
+GitHub limits comparisons to 300 files, and a deployment prompt over the shared 400,000-byte context cap
+is left to you with a notification, without calling the model.
 
 A binary file without a readable patch always needs a human: the screen raises a needs-you alert,
 highlights its header badge and turns the lighthouse beam amber until you decide.

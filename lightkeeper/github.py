@@ -9,6 +9,7 @@ import subprocess
 import time
 from collections import Counter
 from dataclasses import dataclass
+from urllib.parse import quote, urlencode
 
 from .models import CICounts, ChangedFile, Check, Comment, Job, PendingEnvironment, PullRequest, Review, WorkflowRun
 from .policy import approve_floor
@@ -267,21 +268,21 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
             checks.append(Check(name, "pending", "", "", required=True, reported=False))
     comments = tuple(Comment((c.get("author") or {}).get("login", ""), c.get("body") or "")
                      for c in view.get("comments") or [])
-    changed = tuple(
-        ChangedFile(path=f["filename"], previous_path=f.get("previous_filename"), status=f.get("status", ""),
-                    additions=int(f.get("additions", 0)), deletions=int(f.get("deletions", 0)), patch=f.get("patch"),
-                    sha=f.get("sha"))
-        for f in files
-    )
     return PullRequest(
         repo=repo, number=int(view["number"]), head_sha=view["headRefOid"], base_ref=view.get("baseRefName", ""),
         author=(view.get("author") or {}).get("login", ""), is_draft=bool(view.get("isDraft")),
         state=view.get("state", ""), title=view.get("title", ""), body=view.get("body") or "",
         requested_users=tuple(users), requested_teams=tuple(teams), reviews=parsed_reviews, checks=tuple(checks),
-        files=changed, author_is_bot=bool((view.get("author") or {}).get("is_bot")),
+        files=tuple(parse_files(files)), author_is_bot=bool((view.get("author") or {}).get("is_bot")),
         changed_files=view.get("changedFiles"), comments=comments,
         declared_required_checks=tuple(declared_checks) if declared_checks is not None else None,
     )
+
+
+def parse_files(items: list[dict]) -> list[ChangedFile]:
+    return [ChangedFile(path=f["filename"], previous_path=f.get("previous_filename"), status=f.get("status", ""),
+                        additions=int(f.get("additions", 0)), deletions=int(f.get("deletions", 0)), patch=f.get("patch"),
+                        sha=f.get("sha")) for f in items]
 
 
 def parse_runs(repo: str, items: list[dict]) -> list[WorkflowRun]:
@@ -380,6 +381,15 @@ class Gh:
     def waiting_runs(self, repo: str) -> list[WorkflowRun]:
         items = self.json(["api", f"repos/{repo}/actions/runs?status=waiting&per_page=50"])
         return parse_runs(repo, items["workflow_runs"])
+
+    def previous_success(self, repo: str, workflow_file: str, branch: str, before_run_id: int) -> WorkflowRun | None:
+        query = urlencode({"branch": branch, "status": "success", "per_page": 20})
+        items = self.json(["api", f"repos/{repo}/actions/workflows/{quote(workflow_file, safe='')}/runs?{query}"])
+        return next((run for run in parse_runs(repo, items["workflow_runs"]) if run.run_id < before_run_id), None)
+
+    def compare(self, repo: str, base_sha: str, head_sha: str) -> list[ChangedFile]:
+        # One request: pagination here walks the commits, and the files list is capped at 300 whatever the page.
+        return parse_files(self.json(["api", f"repos/{repo}/compare/{base_sha}...{head_sha}"]).get("files") or [])
 
     def pull_request(self, repo: str, number: int) -> PullRequest:
         view = self.json(["pr", "view", str(number), "-R", repo, "--json", PR_VIEW_FIELDS])

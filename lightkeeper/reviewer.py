@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .engines.base import AnswerError, Engine, EngineError, InputError
 from .engines.claude import ClaudeEngine, parse_envelope as _parse_envelope
-from .models import PR_ACTIONS, AnswerV2, Check, Decision, Finding, Job, PullRequest, WorkflowRun
+from .models import PR_ACTIONS, AnswerV2, ChangedFile, Check, Decision, Finding, Job, PullRequest, WorkflowRun
 
 PR_FRAME = """You are lightkeeper, reviewing a GitHub pull request for one engineer (the owner). The owner was
 asked to review it; a script re-checks the state and renders your public answer on GitHub in their name.
@@ -160,6 +160,23 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + f"\n(… cut, {len(text) - limit} more characters)"
 
 
+def _one_line(path: str) -> str:
+    return path.replace("\n", "\\n")          # git allows newlines in paths; a path must not start a heading line
+
+
+def _file_list(files: tuple[ChangedFile, ...]) -> str:
+    return "\n".join(
+        f"- {_one_line(f.path)} (+{f.additions}/-{f.deletions}, {f.status})"
+        + (f" was {_one_line(f.previous_path)}" if f.previous_path else "")
+        + ("" if f.is_complete else " — patch omitted by GitHub (binary or too large)")
+        for f in files
+    )
+
+
+def _diff(files: tuple[ChangedFile, ...]) -> str:
+    return _fence("\n\n".join(f"--- {_one_line(f.path)}\n{f.patch if f.patch is not None else '(no patch)'}" for f in files))
+
+
 def build_pr_prompt(pr: PullRequest, failed_logs: list[tuple[Check, str]] = ()) -> str:
     any_required = bool(pr.declared_required_checks) or any(c.required for c in pr.checks)
     checks = "\n".join(f"- {c.name}: {c.conclusion or c.status}"
@@ -170,12 +187,6 @@ def build_pr_prompt(pr: PullRequest, failed_logs: list[tuple[Check, str]] = ()) 
     if pr.declared_required_checks == () and not any_required:
         checks += "\n(no checks are required on this repository)"
     author = f"{pr.author} (bot account)" if pr.author_is_bot else f"{pr.author} (user account)"
-    files = "\n".join(
-        f"- {f.path} (+{f.additions}/-{f.deletions}, {f.status})" + (f" was {f.previous_path}" if f.previous_path else "")
-        + ("" if f.is_complete else " — patch omitted by GitHub (binary or too large)")
-        for f in pr.files
-    )
-    patches = "\n\n".join(f"--- {f.path}\n{f.patch if f.patch is not None else '(no patch)'}" for f in pr.files)
     reviews = "\n".join(f"- {r.author}: {r.state} at {r.commit_sha[:7]}" + (f"\n{_fence(_clip(r.body, COMMENT_MAX_CHARS))}" if r.body.strip() else "")
                         for r in pr.reviews) or "- (none)"
     comments = "\n\n".join(f"### {c.author}\n{_fence(_clip(c.body, COMMENT_MAX_CHARS))}"
@@ -186,7 +197,7 @@ def build_pr_prompt(pr: PullRequest, failed_logs: list[tuple[Check, str]] = ()) 
         f"# Request: pull request review\nRepository: {pr.repo}#{pr.number}\nAuthor: {author}\n"
         f"Base: {pr.base_ref}  Head: {pr.head_sha[:7]}\nTitle: {_fence(pr.title)}\n\n## Description\n"
         f"{_fence(pr.body or '(empty)')}\n\n## Checks\n{checks}{logs_section}\n\n## Reviews so far\n{reviews}\n\n"
-        f"## Comments so far (last {COMMENTS_MAX})\n{comments}\n\n## Changed files\n{files}\n\n## Diff\n{_fence(patches)}\n"
+        f"## Comments so far (last {COMMENTS_MAX})\n{comments}\n\n## Changed files\n{_file_list(pr.files)}\n\n## Diff\n{_diff(pr.files)}\n"
     )
 
 
@@ -216,11 +227,25 @@ def build_deploy_prompt(run: WorkflowRun, environment: str, jobs: list[Job], log
     excerpts = "\n\n".join(f"### {by_id[i].name if i in by_id else '?'} (job {i})\n{_fence(excerpt_log(text))}"
                             for i, text in logs.items()) or "(no completed job logs)"
     workflow = _fence(workflow_text) if workflow_text else "(not available at this revision)"
+    changes_heading = "## Changes since the last successful run of this workflow"
+    if run.base_sha:
+        changes_heading += f" ({run.base_sha[:7]}...{run.head_sha[:7]})"
+    if run.comparison_error:
+        changes = f"(no comparison available: {run.comparison_error})"
+    elif run.base_sha is None:
+        changes = "(no earlier successful run of this workflow found on this branch)"
+    elif not run.files:
+        changes = "(no changes)"
+    else:
+        changes = f"{_file_list(run.files)}\n\n## Diff\n{_diff(run.files)}"
+        if len(run.files) >= 300:
+            changes += "\n(comparison reached GitHub's 300-file limit; additional files may be omitted)"
     return (
         f"# Request: deployment approval\nRepository: {run.repo} (default branch: {default_branch})\n"
         f"Workflow: {run.workflow_file} (run {run.run_id}, attempt {run.attempt}, event {run.event})\n"
         f"Branch: {run.head_branch} @ {run.head_sha[:7]}\nEnvironment waiting for approval: {environment}\n\n"
         f"## Jobs\n{job_lines}\n\n## Workflow definition at this revision\n{workflow}\n\n"
+        f"{changes_heading}\n{changes}\n\n"
         f"## Logs of completed jobs\n{excerpts}\n"
     )
 

@@ -6,6 +6,8 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ### Changed
 
+- Deployment reviews show the model the changes since the last successful run of the same workflow on the
+  same branch: what the gated job will apply. Pending gates are judged again once with that context.
 - Pull requests are discovered when your review is requested personally **or through a team you belong to**
   (including `CODEOWNERS` groups). Before, team requests were never seen.
 

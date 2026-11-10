@@ -472,6 +472,33 @@ class GhTests(unittest.TestCase):
         self.assertEqual(runner.calls[-1][0],
                          ["gh", "api", "repos/org/repo/actions/runs?status=waiting&per_page=50"])
 
+    def test_previous_success_uses_newest_lower_id_on_same_workflow_and_branch(self):
+        runner = FakeRunner(stdout=json.dumps({"workflow_runs": [
+            {"id": i, "head_sha": str(i), "path": ".github/workflows/deploy.yml"}
+            for i in (110, 100, 99, 98)]}))
+        gh = Gh(runner=runner)
+        previous = gh.previous_success("org/repo", "deploy.yml", "release/a&b", 100)
+        self.assertEqual((previous.run_id, previous.head_sha, previous.workflow_file), (99, "99", "deploy.yml"))
+        self.assertEqual(runner.calls[0][0], ["gh", "api",
+                         "repos/org/repo/actions/workflows/deploy.yml/runs?branch=release%2Fa%26b&status=success&per_page=20"])
+        self.assertIsNone(gh.previous_success("org/repo", "deploy.yml", "main", 98))
+        runner.stdout = '{"workflow_runs": []}'
+        self.assertIsNone(gh.previous_success("org/repo", "deploy.yml", "main", 100))
+
+    def test_compare_parses_files_in_one_request(self):
+        from tests.helpers import make_file
+        runner = FakeRunner(stdout=json.dumps(
+            {"files": [{"filename": "new.py", "previous_filename": "old.py", "status": "renamed",
+                        "additions": 2, "deletions": 1, "patch": "@@\n-old\n+new", "sha": "abc"},
+                       {"filename": "image.png", "status": "added"}]}))
+        gh = Gh(runner=runner)
+        self.assertEqual(gh.compare("org/repo", "base", "head"), [
+            make_file("new.py", 2, 1, "renamed", "old.py", "@@\n-old\n+new", "abc"),
+            make_file("image.png", 0, 0, "added", patch=None)])
+        self.assertEqual(runner.calls[0][0], ["gh", "api", "repos/org/repo/compare/base...head"])
+        runner.stdout = '{"commits": []}'
+        self.assertEqual(gh.compare("org/repo", "base", "head"), [])
+
     def test_parse_approval_requests(self):
         items = [
             {"reason": "approval_requested", "updated_at": "2026-10-10T12:00:00Z",

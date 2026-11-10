@@ -78,3 +78,5 @@ belongs in its commit and pull request.
 - 2026-11-10 · **Team review requests count:** most of a team's review asks go to a team or a CODEOWNERS group, not to one
   person, so discovery uses `review-requested:` (personal and team) and relies on the watched-repository list to bound it.
 - 2026-11-09 · **Deployment notifications are wake signals, not run identities:** GitHub sends them without a run URL, so a fresh request lists the repository's waiting runs once; pending gates are the truth.
+- 2026-11-10 · **A deployment is judged by what changed since the last success:** the gate fingerprint carries the
+  base of that comparison, so a new earlier success re-opens the gate; the prompt frame itself is unchanged.

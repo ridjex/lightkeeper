@@ -774,6 +774,86 @@ class DeploymentLifecycle(LifecycleBase):
         self.gh.files_at[(run.repo, f".github/workflows/{run.workflow_file}")] = "on: workflow_dispatch\n"
         return run
 
+    def test_comparison_reaches_model_and_gate_can_be_approved(self):
+        from lightkeeper.engines.base import Answer, Diagnostics
+        run = self.arm()
+        base = "a" * 40
+        self.gh.previous_success = Mock(return_value=make_run(run_id=99, head_sha=base))
+        self.gh.compare = Mock(return_value=[make_file("migration.py", patch="@@\n+add_column()")])
+        engine = Mock(label="test", ask=Mock(return_value=Answer(
+            {"decision": "approve", "summary": "Additive migration", "reason": "checked migration"}, Diagnostics())))
+        r = self.runner(reviewer=Reviewer(engine, "Rules"))
+        self.assertEqual(r.process_run(run.repo, run.run_id), "applied")
+        self.gh.previous_success.assert_called_once_with(run.repo, run.workflow_file, run.head_branch, run.run_id)
+        self.gh.compare.assert_called_once_with(run.repo, base, run.head_sha)
+        prompt = engine.ask.call_args.args[1]
+        self.assertIn("(aaaaaaa...1234567)", prompt)
+        self.assertIn("+add_column()", prompt)
+        self.assertEqual(self.gh.writes[0][0], "deployment")
+
+    def test_refused_or_timed_out_comparison_reaches_model_and_transient_errors_retry(self):
+        from lightkeeper.engines.base import Answer, Diagnostics
+        run = self.arm()
+        self.gh.previous_success = Mock(return_value=make_run(run_id=99, head_sha="a" * 40))
+        self.gh.compare = Mock(side_effect=GhError(["api"], 1, "HTTP 404: no common ancestor"))
+        engine = Mock(label="test", ask=Mock(return_value=Answer(
+            {"decision": "ignore", "summary": "", "reason": "comparison unavailable"}, Diagnostics())))
+        r = self.runner(reviewer=Reviewer(engine, "Rules"))
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertIn("(no comparison available: gh api -> exit 1: HTTP 404: no common ancestor)",
+                      engine.ask.call_args.args[1])
+        self.assertEqual(r.process_run(run.repo, run.run_id), "final")
+        self.gh.previous_success.return_value = make_run(run_id=98, head_sha="b" * 40)
+        self.gh.compare.side_effect = GhTimeout(["api"], 60)
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertIn("(no comparison available: gh api timed out after 60s)", engine.ask.call_args.args[1])
+        self.gh.previous_success.return_value = make_run(run_id=97, head_sha="c" * 40)
+        for transient in (GhError(["api"], 1, "HTTP 502: bad gateway"), GhError(["api"], 1, "HTTP 403: API rate limit exceeded")):
+            self.gh.compare.side_effect = transient
+            with self.assertRaises(GhError):
+                r.process_run(run.repo, run.run_id)
+        self.gh.previous_success.side_effect = GhError(["api"], 1, "HTTP 404: workflow not found")
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertIn("HTTP 404: workflow not found", engine.ask.call_args.args[1])
+        self.assertEqual(engine.ask.call_count, 3)
+        self.assertEqual(self.gh.writes, [])
+
+    def test_comparison_is_fetched_only_when_the_model_is_asked(self):
+        run = self.arm()
+        self.gh.previous_success = Mock(return_value=make_run(run_id=99, head_sha="a" * 40))
+        self.gh.compare = Mock(return_value=[])
+        r = self.runner(reviewer=FakeReviewer([IGNORE]))
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertEqual(r.process_run(run.repo, run.run_id), "final")
+        self.assertEqual((self.gh.previous_success.call_count, self.gh.compare.call_count), (2, 1))
+
+    def test_changed_comparison_base_reopens_gate(self):
+        run = self.arm()
+        self.gh.previous_success = Mock(return_value=make_run(run_id=98, head_sha="a" * 40))
+        self.gh.compare = Mock(return_value=[])
+        reviewer = FakeReviewer([IGNORE, IGNORE])
+        r = self.runner(reviewer=reviewer)
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        before = self.records()[-1]["fingerprint"]
+        self.assertEqual(r.process_run(run.repo, run.run_id), "final")
+        self.gh.previous_success.return_value = make_run(run_id=99, head_sha="b" * 40)
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertNotEqual(self.records()[-1]["fingerprint"], before)
+        self.assertEqual(reviewer.calls, 2)
+
+    def test_oversized_deployment_comparison_alerts_without_model_or_write(self):
+        run = self.arm()
+        self.gh.previous_success = Mock(return_value=make_run(run_id=99, head_sha="a" * 40))
+        self.gh.compare = Mock(return_value=[make_file(patch="x" * CONTEXT_MAX_BYTES)])
+        engine = Mock()
+        r = self.runner(reviewer=Reviewer(engine, "Rules"))
+        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertEqual(r.process_run(run.repo, run.run_id), "final")
+        engine.ask.assert_not_called()
+        self.assertEqual(self.gh.writes, [])
+        self.assertEqual(len(self.notified), 1)
+        self.assertIn("byte cap", self.notified[0])
+
     def test_null_notifications_list_once_and_respect_scope_and_seen_runs(self):
         from unittest.mock import Mock
         self.arm()

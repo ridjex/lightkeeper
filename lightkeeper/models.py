@@ -182,6 +182,9 @@ class WorkflowRun:
     head_branch: str
     head_sha: str
     status: str
+    base_sha: str | None = None
+    files: tuple[ChangedFile, ...] = ()
+    comparison_error: str | None = None
 
 
 @dataclass(frozen=True)

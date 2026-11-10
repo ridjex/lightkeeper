@@ -80,6 +80,12 @@ class FakeGh:
     def waiting_runs(self, repo):
         return [run for run in self.runs if run.repo == repo and run.status == "waiting"]
 
+    def previous_success(self, repo, workflow_file, branch, before_run_id):
+        return None
+
+    def compare(self, repo, base_sha, head_sha):
+        return []
+
     def pull_request(self, repo, number):
         seq = self.pr_snapshots[(repo, number)]
         return seq.pop(0) if len(seq) > 1 else seq[0]

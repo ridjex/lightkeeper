@@ -880,7 +880,9 @@ class Runner:
             log(f"{run.repo} run {run.run_id}/{run.attempt} {env.name}: earlier write outcome unknown; leaving to a human")
             return "unknown"
         jobs = self.gh.jobs(run.repo, run.run_id, run.attempt)
-        fingerprint = hashlib.sha256(json.dumps([run.attempt, run.head_sha, [[j.job_id, j.status, j.conclusion] for j in jobs]]).encode()).hexdigest()[:16]
+        run = self._with_comparison(run, files=False)
+        fingerprint = hashlib.sha256(json.dumps([run.attempt, run.head_sha, run.base_sha,
+                                                 [[j.job_id, j.status, j.conclusion] for j in jobs]]).encode()).hexdigest()[:16]
         if self.journal.is_final(key, self.settings.judgement(run.repo).hash, self.mode(run.repo), fingerprint):
             return "final"
         data = {"environment_id": env.env_id, "environment": env.name}
@@ -891,6 +893,7 @@ class Runner:
         stored = self._stored_decision(key, fingerprint)
         if stored:
             return self._settle_deploy(key, stored, lambda: self._write_gate(run, stored), fingerprint)
+        run = self._with_comparison(run, files=True)
         logs = {j.job_id: self._job_log(run.repo, j.job_id) for j in jobs if j.status == "completed"}
         branch = self._branch(run.repo)
         workflow_text = self.gh.file_at(run.repo, f".github/workflows/{run.workflow_file}", run.head_sha)
@@ -925,6 +928,24 @@ class Runner:
                 return Decision("defer", "stopping", "ai")
             self._pause_reviewer(exc)
             return Decision("defer", f"reviewer failed: {exc}"[:200], "ai")
+
+    def _with_comparison(self, run: WorkflowRun, *, files: bool) -> WorkflowRun:
+        """The run with the head of the last successful run of its workflow on its branch and, when `files` is set,
+        the changes since then. A refusal (4xx) or a timeout becomes a line in the prompt; a rate limit or a 5xx
+        propagates like every other read, and the gate is retried next tick."""
+        try:
+            if not files:
+                previous = self.gh.previous_success(run.repo, run.workflow_file, run.head_branch, run.run_id)
+                return run if previous is None else replace(run, base_sha=previous.head_sha)
+            if run.base_sha is None or run.comparison_error:
+                return run
+            return replace(run, files=tuple(self.gh.compare(run.repo, run.base_sha, run.head_sha)))
+        except GhTimeout as exc:
+            return replace(run, comparison_error=" ".join(str(exc).split()))
+        except GhError as exc:
+            if exc.rate_limited or not exc.definite:
+                raise
+            return replace(run, comparison_error=" ".join(str(exc).split()))
 
     def _job_log(self, repo: str, job_id: int) -> str:
         try:
