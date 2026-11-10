@@ -4,6 +4,11 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Changed
+
+- Pull requests are discovered when your review is requested personally **or through a team you belong to**
+  (including `CODEOWNERS` groups). Before, team requests were never seen.
+
 ## [0.1.12] — 2026-11-09
 
 ### Fixed

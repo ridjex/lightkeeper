@@ -362,11 +362,10 @@ class Gh:
         return login
 
     def search_review_requests(self, login: str, repos: tuple[str, ...]) -> tuple[list[tuple[str, int]], bool]:
-        """Open PRs in `repos` where `login` is directly requested as a reviewer right now (team requests are
-        not included: `review-requested:` would match every team the owner belongs to)."""
+        """Open PRs in `repos` where `login`, or a team `login` belongs to, is requested as a reviewer right now."""
         found: dict[tuple[str, int], None] = {}
         repo_flags = [flag for repo in repos for flag in ("--repo", repo)]
-        items = self.json(["search", "prs", f"user-review-requested:{login}", *repo_flags, "--state", "open",
+        items = self.json(["search", "prs", f"review-requested:{login}", *repo_flags, "--state", "open",
                            "--limit", str(SEARCH_LIMIT), "--json", "repository,number"])
         for item in items:
             found[(item["repository"]["nameWithOwner"], int(item["number"]))] = None

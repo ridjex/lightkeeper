@@ -131,8 +131,8 @@ run attempt, so an unknown one still needs a human.
   parsers share latest-run deduplication; unreported declared checks stay outside light-status counts.
   Truncated contexts skip only that PR with one warning per head; a missing rollup means zero checks.
   Pushes, state/draft changes, all checks finishing or a changed failure count can wake a full tick.
-- Candidates each tick: `gh search prs user-review-requested:<login> --repo … --state open` (direct
-  requests only) ∪ every PR in the journal without a `closed` event (watched). A watched PR is forgotten
+- Candidates each tick: `gh search prs review-requested:<login> --repo … --state open` (personal and
+  team requests) ∪ every PR in the journal without a `closed` event (watched). A watched PR is forgotten
   when seen closed or merged; reopened, it is found again by search. A search failure does not stop the
   watched PRs from running.
 - Finality: `applied` approve and `satisfied` forever; `nothing`, `ignore`, `unclear`, `error`, `lost`, `would_*`

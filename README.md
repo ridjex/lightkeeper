@@ -77,8 +77,8 @@ screen libraries with it; Claude Code is separate (`brew install --cask claude-c
    lightkeeper --once --plain
    ```
 
-   The tool only looks at open pull requests in your configured repositories where GitHub lists **you
-   personally** as a requested reviewer. Team requests and your own pull requests are ignored. If the log
+   The tool only looks at open pull requests in your configured repositories where GitHub lists **you, or a
+   team you belong to**, as a requested reviewer. Your own pull requests are ignored. If the log
    ends with `tick: nothing to do`, ask a teammate to request your review on a pull request and run it again.
 
 5. See what it would have done:
@@ -315,10 +315,10 @@ lightkeeper --check-repo example/widget
 This runs `gh api repos/example/widget`, prints access, archived status and default branch, and exits
 without loading the model or journal. It does not enrol the repository.
 
-Ask teammates to **request your review on GitHub** (you personally, or an individual `CODEOWNERS` entry):
-the tool acts only on pull requests where GitHub shows you as a directly requested reviewer at least
-once. Team requests are not picked up. If the author removes you before the tool said anything, it waits
-until you are requested again. If you review a pull request by hand, in any way, the tool leaves it to you.
+Ask teammates to **request your review on GitHub**: the tool acts only on pull requests where GitHub shows
+you, or a team you belong to, as a requested reviewer at least once (`CODEOWNERS` entries count). If the
+author removes the request before the tool said anything, it waits until you are requested again. If you
+review a pull request by hand, in any way, the tool leaves it to you.
 
 ## Engines
 
@@ -404,7 +404,6 @@ a notify line does not raise a model alert. History still shows non-approving re
 - Runs only while your machine is awake; nothing is missed, only delayed.
 - The model can be wrong. The rules are the lever: say what must never be approved, and keep `nothing`
   the default for anything you would want to see yourself.
-- Team review requests (`team-review-requested`) are not discovered.
 - POSIX only (file locks and signals): macOS and Linux. GitHub.com only: every `gh` call is pinned to it.
 - The journal and session folders grow until you delete them; there is no retention yet (see the issues).
 

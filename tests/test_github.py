@@ -456,7 +456,7 @@ class GhTests(unittest.TestCase):
         args = runner.calls[0][0]
         self.assertEqual(args[args.index("--repo") + 1], "org/a")
         self.assertEqual(args.count("--repo"), 2)
-        self.assertIn("user-review-requested:me", args)              # direct requests only
+        self.assertIn("review-requested:me", args)                   # personal and team requests
 
     def test_null_url_approval_notification_and_waiting_runs(self):
         notification = {"reason": "approval_requested", "updated_at": "2026-11-09T09:01:26Z",
