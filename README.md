@@ -24,8 +24,8 @@ repository, read the next section.
 ## Before you use it: what it sends and what it posts
 
 - **To Anthropic, through your `claude` CLI account:** for every pull request it reviews, the title,
-  description, diff, earlier reviews and comments, check results and the tail of each failed CI log; for
-  deployment gates, the workflow file, job logs and changes since the last successful run. This happens in
+  description, diff, earlier reviews and comments, check results, the repository tree and complete collected
+  failed CI logs; for deployment gates, the workflow file, job logs and changes since the last successful run. This happens in
   dry-run too. Make sure your employer allows sending this code to Anthropic under your account's terms.
 - **To GitHub, as you:** reviews and deployment approvals are posted with your `gh` login. GitHub attributes
   them to you; to your team and to branch protection they are your reviews, so an approval counts toward
@@ -119,8 +119,11 @@ the pull request wait. Optional checks are shown to the model as running or not 
 review, except that a failed check of any kind still blocks an approve. Re-runs of a check count once
 per workflow and job name (commit statuses use their context). Active reruns supersede completed runs;
 otherwise the latest timestamp wins, with list order breaking ties or missing dates. For the rest,
-the model gets the description, the diff, every check with its link, the tail of each failed job's log,
-the earlier comments and reviews, and your `rules.md`; it answers one of
+the script writes the complete description, diff, checks, earlier comments and reviews, collected failed
+job logs and repository tree into a private workspace. The model gets an overview and your `rules.md`;
+Read, Grep and Glob let it open the material it needs. Whole sections are inlined in order while the
+request fits 200,000 UTF-8 bytes; larger sections point to their files. No request is skipped for its size,
+and the model decides what to read and how deeply. It answers one of
 `approve | request_changes | comment | nothing`, public `why` and `watch`, a summary and findings,
 a private reason, and optionally one line for you. The script checks the pull request has not changed,
 posts the review bound to the reviewed commit, writes the journal, and alerts you to conditions raised
@@ -149,8 +152,8 @@ every job and the logs before the gate and answers `approve | ignore`. A gate th
 raises an alert with its reason and a desktop notification; it clears when the gate is gone.
 It also sees file changes since the newest earlier successful run of the same workflow on the same branch
 (looked up among 20 successful runs); unavailable comparisons and incomplete patches are marked.
-GitHub limits comparisons to 300 files, and a deployment prompt over the shared 400,000-byte context cap
-is left to you with a notification, without calling the model.
+GitHub limits comparisons to 300 files; the overview marks that limitation. Every deployment uses the
+same workspace flow, with the workflow, complete job logs and comparison patches available to read.
 
 A binary file without a readable patch always needs a human: the screen raises a needs-you alert,
 highlights its header badge and turns the lighthouse beam amber until you decide.
@@ -158,13 +161,14 @@ An empty file counts as visible: its empty Git blob has nothing to read, even wi
 
 ## What the code guarantees, whatever the rules say
 
-- The model has no tools and no network: it sees what the script collected, nothing else, and only
-  proposes. The script posts, and only after re-fetching the pull request and finding the same head,
-  description, checks, files and teammates' reviews it assessed. Approvals are bound to that commit
+- The model has only Read, Grep and Glob, confined by the CLI's permission mode to the material workspace;
+  no shell, network or GitHub token. It only proposes. The script posts after re-fetching the pull request
+  and finding the same head, description, checks, files and teammates' reviews it assessed. Approvals are bound to that commit
   (`commit_id`). One review per head and action: a crash after posting never posts twice.
-- Three objective floors an `approve` cannot cross, whatever the model was talked into: a bot author, a
-  failed check, a file whose patch is not visible. The same three are in `rules.md`; the code only repeats
-  them. An empty file (identified by its empty Git blob) counts as visible, including when removed.
+- An `approve` cannot cross the code's floors: a bot author, a failed check, a file whose patch GitHub
+  omitted, an incomplete file list, or a denied file-tool call. Denied calls also block deployment approvals.
+  Incomplete lists still reach the model. A patch the model chose not to open is its judgement, not a floor.
+  An empty file (identified by its empty Git blob) counts as visible, including when removed.
 - One decision per pull request head (or per run attempt). A push, a check rerun, an edited description
   or edited rules re-open it; your own review, approval or a closed pull request end it.
 - A dismissed automated review on the current head is a veto: one notification, no re-approval, even
@@ -185,8 +189,11 @@ An empty file counts as visible: its empty Git blob has nothing to read, even wi
   Failed lookups retry twice with short pauses (a rate-limited answer is not retried) and defer writes if all
   attempts fail; three consecutive failed checks raise an error alert. A mismatch stops and alerts immediately. A matching check clears
   the alert; the header retains the last known login as unconfirmed during transient lookup failures.
-- Required checks still running after 3 hours → one notification, no approval. A context too large to send → no
-  approval, one notification.
+- Required checks still running after 3 hours → one notification, no approval. A review hitting its 60-turn
+  limit or budget (default $5), or timing out (default 900 seconds) after tool use, becomes `unclear`: nothing
+  posts, the journal records it, and an alert and desktop notification name the bound and files opened.
+  That input is settled, so the next tick does not pay to try it again. A timeout before any tool call
+  remains a transport failure and can retry.
 
 ## Comments
 
@@ -224,7 +231,7 @@ only the public summary and hidden trace. Private reasons and owner notification
 ## Writing rules
 
 - `rules.md` is passed to the model verbatim, after a fixed frame that names the four actions and the
-  three floors. Keep only what the model should read: no notes to yourself, no alternatives to choose from.
+  approval rules. Keep only what the model should read: no notes to yourself, no alternatives to choose from.
   `lightkeeper --init` copies `lightkeeper/templates/rules.md` as the starting point. It is written for a
   team where one approval merges and the reviewer **approves by default**; if approval must stay with a
   human, replace the paragraph that starts with "The owner's intent" by:
@@ -264,7 +271,8 @@ engine = "claude"                  # the only engine today
 model = "opus"
 effort = "medium"
 # profile = "~/.claude-work"       # omitted: default CLI profile; relative paths use this directory
-timeout_s = 600                    # positive integer
+timeout_s = 900                    # positive integer; wall-clock review allowance
+budget_usd = 5.0                   # positive finite number; maximum spend per review
 
 [comment]
 language = "en"                    # reserved; write template text in your desired language
@@ -308,7 +316,7 @@ judgement match, including after a restart. Allowed actions in dry-run are recor
 Settings and Markdown files reload between ticks and immediately before writes. A bad startup config exits 2;
 a bad reload raises `settings_error` and retains the last good settings, while the pre-write check defers
 with `settings invalid, not writing`. Changing the login requires a restart. Rules, repository notes and
-remarks change that repository's judgement; engine/model/profile/timeout, posting flags, templates and
+remarks change that repository's judgement; engine/model/profile/timeout/budget, posting flags, templates and
 repository-list edits do not reopen settled outcomes. History names the changed components.
 
 Check a repository before enabling it:
@@ -325,11 +333,16 @@ you, or a team you belong to, as a requested reviewer at least once (`CODEOWNERS
 author removes the request before the tool said anything, it waits until you are requested again. If you
 review a pull request by hand, in any way, the tool leaves it to you.
 
+Frame 4 re-evaluates open contextual outcomes once after this update, including old size skips. Applied
+approvals, satisfied requests and owner approvals remain final. Numeric allowances are outside the judgement
+hash, so tuning them does not re-open outcomes.
+
 ## Engines
 
 Claude is the current engine. `claude auth status` checks login health at startup, after a model failure,
 and every full tick while authentication is paused, with a 20-second timeout. Probe and model calls use
-one scrubbed environment, an empty temporary working directory and the configured profile. Profile paths
+one scrubbed environment and the configured profile. Probes run in an empty temporary directory; reviews
+run in a private material workspace, with the system prompt in a separate private directory. Profile paths
 expand `~` and resolve relative to the config directory. The header shows `claude <profile-basename> ✓/✗`
 (`default` without an explicit profile), dim `…` until checked. A failed probe warns without blocking calls.
 Only a call's auth failure pauses authentication until a probe passes. The alert gives the exact fix:
@@ -340,7 +353,10 @@ pause for 15 minutes. Auth, quota and transport failures defer all remaining mod
 with one notification per failure streak. A successful auth probe never shortens a timed pause.
 A profile edit is probed on the next
 tick. No periodic ten-minute probe is scheduled. Request prompts still travel on stdin, and model
-sessions retain `prompt.md`, `stdout.json`, `stderr.txt`, `meta.json` and `decision.json`.
+sessions retain `prompt.md`, `stream.jsonl`, `stderr.txt`, `meta.json`, `decision.json` and `files.tsv`.
+Separate patch files are deleted with the temporary workspace. Old sessions with `stdout.json` still open.
+Private assessments record opened/offered/denied counts, turns and cost; PR detail shows `opened N of M files`.
+Nothing about file coverage is added by the script to public comments.
 When a body is posted or would be posted, `rendered.md` stores that exact body, including its trace.
 
 ## Files on disk

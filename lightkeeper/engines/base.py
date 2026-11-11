@@ -14,9 +14,18 @@ class Diagnostics:
 
 
 @dataclass(frozen=True)
+class Trace:
+    opened: tuple[str, ...] = ()
+    denied: tuple[str, ...] = ()
+    turns: int = 0
+    cost_usd: float | None = None
+
+
+@dataclass(frozen=True)
 class Answer:
     parsed: dict
     diagnostics: Diagnostics
+    trace: Trace = Trace()
 
 
 @dataclass(frozen=True)
@@ -31,6 +40,7 @@ class EngineError(RuntimeError):
     def __init__(self, message: str, diagnostics: Diagnostics | None = None):
         super().__init__(message)
         self.diagnostics = diagnostics or Diagnostics()
+        self.trace = Trace()
 
 
 class AuthError(EngineError):

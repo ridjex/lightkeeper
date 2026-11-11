@@ -234,11 +234,12 @@ def rehash(settings: Settings, journal) -> dict | None:
     result = _rehash_legacy(settings, journal)
     # Frame 3 only changes public wording. Keep settlements, not cached answers, from frame 2.
     from ._frame_v2 import FRAME, SCHEMA
+    from ._frame_v3 import FRAME as FRAME_3, SCHEMA as SCHEMA_3
     from .settings import judgement
     aliases, updated = {}, {}
     for name, repo in settings.repos.items():
         previous = judgement(FRAME, settings.rules, settings.notes.get(name, ""), repo.remarks, SCHEMA).hash
-        current = settings.judgement(name).hash
+        current = judgement(FRAME_3, settings.rules, settings.notes.get(name, ""), repo.remarks, SCHEMA_3).hash
         if previous != current and (previous in journal.settled_policies(name)
                 or any(record["to"].get(name) == previous for record in journal.rehashes.values())):
             aliases.setdefault(previous, {})[name] = current

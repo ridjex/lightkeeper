@@ -3,6 +3,12 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-11-11 · **Built-in Read, Grep and Glob use the CLI's dontAsk workspace confinement:** verified CLI refusals cover traversal and external symlinks; no broker or kernel sandbox is added, and denied calls refuse approval.
+- 2026-11-11 · **Only generated names reach the filesystem:** GitHub paths stay escaped inside indexes and patches, so request material cannot become CLI configuration.
+- 2026-11-11 · **One whole-section inline rule for every size:** reserve pointers, then inline sections in order under 200,000 bytes; the model chooses what matters from complete files.
+- 2026-11-11 · **Coverage remains private:** opened/offered counts aid diagnosis without adding a mechanical sentence to the public review.
+- 2026-11-11 · **No frame-3 alias to frame 4:** old cap skips and other contextual outcomes need a real review once; the frame-2 alias still targets frozen frame 3, and final approvals remain final.
+
 - 2026-11-09 · **An absent review ten minutes after an unknown write means the write was lost:** a dismissed review still counts as written; closure or a new head is not a shortcut (auto-merge right after a 502 is the race); blob SHAs stay out of fingerprints so settled outcomes hold.
 - 2026-11-09 · **An added or removed empty blob is visible without a patch;** a file emptied by a modification keeps its patch, so the rule stays off `modified`.
 - 2026-10-23 · **The light poll reads check names so both paths deduplicate alike:** superseded runs must not wake a full fetch every poll.

@@ -114,17 +114,16 @@ def evaluate_pr(pr: PullRequest, policy) -> Decision:
     pending = [c.name for c in pr.checks if c.status != "completed" and c.required]
     if pending:
         return Decision("defer", f"checks still running: {', '.join(pending[:3])}", "readiness")
-    if not pr.files:
+    if not pr.files and not pr.changed_files:
         return Decision("ignore", "no changed files", "eligibility")
-    if pr.changed_files is not None and pr.changed_files != len(pr.files):
-        reason = f"file list incomplete: {len(pr.files)} of {pr.changed_files}"
-        return Decision("nothing", reason, "eligibility", notify=f"{pr.repo}#{pr.number}: {reason}; open it and decide")
     return Decision("review", "eligible; the model decides", "eligibility")
 
 
 def approve_floor(pr: PullRequest) -> str | None:
-    """The three objective rules that an `approve` must clear whatever the model was talked into. Returns the
+    """The objective rules that an `approve` must clear whatever the model was talked into. Returns the
     reason that blocks it, or None. The same rules are written in RULES.md for the model; this is the floor."""
+    if pr.changed_files is not None and pr.changed_files != len(pr.files):
+        return f"file list incomplete: {len(pr.files)} of {pr.changed_files}"
     if pr.author_is_bot or pr.author.endswith("[bot]"):
         return "bot author"
     failed = [c.name for c in pr.checks if c.failed]

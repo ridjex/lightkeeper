@@ -9,6 +9,8 @@ login = "your-github-login"        # must match `gh auth status`
 # engine = "claude"
 # model = "opus"
 # effort = "medium"
+# timeout_s = 900                  # positive wall-clock review allowance in seconds
+# budget_usd = 5.0                 # positive maximum spend per review
 # profile = "~/.claude-work"       # a Claude Code profile directory; omit for the default one
 
 [comment]

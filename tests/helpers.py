@@ -86,6 +86,9 @@ class FakeGh:
     def compare(self, repo, base_sha, head_sha):
         return []
 
+    def tree(self, repo, sha):
+        return ["docs/readme.md"], False
+
     def pull_request(self, repo, number):
         seq = self.pr_snapshots[(repo, number)]
         return seq.pop(0) if len(seq) > 1 else seq[0]
@@ -136,7 +139,7 @@ class FakeReviewer:
         self.last_prs = []
         self.last_logs = None
 
-    def review_pr(self, pr, failed_logs=()):
+    def review_pr(self, pr, failed_logs=(), **kwargs):
         self.last_prs.append(pr)
         self.last_failed_logs = failed_logs
         return self._next()

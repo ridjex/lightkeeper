@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 from importlib.resources import files
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -28,7 +29,8 @@ class AgentSettings:
     model: str = "opus"
     effort: str = "medium"
     profile: str | None = None
-    timeout_s: int = 600
+    timeout_s: int = 900
+    budget_usd: float = 5.0
 
 
 @dataclass(frozen=True)
@@ -217,14 +219,17 @@ def load_settings(config_dir: str | Path | None = None, *, include_text: bool = 
     login = _value(identity, "login", None, str, file, "identity")
     if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", login):
         raise SettingsError(file, "identity.login", "expected a GitHub login (1-39 letters, digits or hyphens)")
-    agent = _table(raw.get("agent", {}), file, "agent", {"engine", "model", "effort", "profile", "timeout_s"})
+    agent = _table(raw.get("agent", {}), file, "agent", {"engine", "model", "effort", "profile", "timeout_s", "budget_usd"})
     agent_values = {key: _value(agent, key, default, str, file, "agent")
                     for key, default in (("engine", "claude"), ("model", "opus"), ("effort", "medium"))}
     if agent_values["engine"] != "claude":
         raise SettingsError(file, "agent.engine", "only 'claude' is supported")
-    timeout = _value(agent, "timeout_s", 600, int, file, "agent")
+    timeout = _value(agent, "timeout_s", 900, int, file, "agent")
     if timeout <= 0:
         raise SettingsError(file, "agent.timeout_s", "expected a positive integer")
+    budget = agent.get("budget_usd", 5.0)
+    if type(budget) not in (int, float) or not math.isfinite(budget) or budget <= 0:
+        raise SettingsError(file, "agent.budget_usd", "expected a positive finite number")
     profile = None
     if "profile" in agent:
         profile = _value(agent, "profile", None, str, file, "agent")
@@ -254,7 +259,7 @@ def load_settings(config_dir: str | Path | None = None, *, include_text: bool = 
     if include_text and any(repo.enabled for repo in repos.values()) and not rules.strip():
         raise SettingsError(config / "rules.md", "rules", "shared rules are missing or blank; "
                             "run lightkeeper --init to create missing files, then edit rules.md")
-    return Settings(login, AgentSettings(**agent_values, profile=profile, timeout_s=timeout), comments,
+    return Settings(login, AgentSettings(**agent_values, profile=profile, timeout_s=timeout, budget_usd=float(budget)), comments,
                     repos, rules, template, notes, config, screen=screen_settings, alerts=alert_settings)
 
 

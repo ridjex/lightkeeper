@@ -144,6 +144,8 @@ class DetailState:
     latest_why: str = ""
     latest_watch: str = ""
     latest_verdict: str = ""
+    opened: int | None = None
+    offered: int | None = None
     approve_refusal: str = ""
     floor_stale: bool = True
     floor_counts: tuple = ()

@@ -4,6 +4,22 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-11-11
+
+### Changed
+
+- Every pull request and deployment gate is reviewed whatever its size, using complete material in a private
+  workspace and read-only file tools. Whole-section pointers replace the former 400 KB skip.
+- Open non-final outcomes are judged again once after the update; final approvals remain final.
+- The default model timeout is 900 seconds. Turn/budget limits and timeouts after tool use settle as unclear
+  with an alert and notification, instead of repeatedly spending on the same input.
+
+### Added
+
+- `[agent] budget_usd` sets a positive per-review spending limit (default 5.0).
+- Private read/denial/turn/cost traces, an approval floor for denied file-tool calls, and opened-file counts
+  in PR detail. Incomplete PR file lists now reach the model and block only approvals.
+
 ## [0.1.14] — 2026-11-10
 
 ### Changed

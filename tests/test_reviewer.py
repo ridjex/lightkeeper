@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from lightkeeper.models import Check, Comment, Review
-from lightkeeper.reviewer import (CONTEXT_MAX_BYTES, DEPLOY_FRAME, LOG_MAX_BYTES, PR_FRAME, ClaudeReviewer,
+from lightkeeper.reviewer import (DEPLOY_FRAME, LOG_MAX_BYTES, PR_FRAME, ClaudeReviewer,
                                         ReviewerError, UnclearAnswer, build_deploy_prompt, build_pr_prompt,
                                         excerpt_log, parse_deploy_answer, parse_envelope, parse_pr_answer,
                                         system_prompt)
@@ -28,7 +28,7 @@ class PromptTests(unittest.TestCase):
         run = make_run(base_sha="abcdef012345", files=files)
         text = build_deploy_prompt(run, "production", [], {}, workflow_text="jobs: {}")
         self.assertIn("## Changes since the last successful run of this workflow (abcdef0...1234567)", text)
-        self.assertIn(build_pr_prompt(make_pr(files=files)).split("## Changed files\n", 1)[1].strip(), text)
+        self.assertIn(build_pr_prompt(make_pr(files=files)).split("## Changed files\n", 1)[1].split("\n\n## Reviews so far", 1)[0].strip(), text)
         self.assertIn("binary.png (+1/-1, modified) — patch omitted by GitHub (binary or too large)", text)
         self.assertLess(text.index("jobs: {}"), text.index("## Changes"))
         self.assertLess(text.index("## Changes"), text.index("## Logs"))
@@ -211,7 +211,12 @@ class ClaudeReviewerTests(unittest.TestCase):
         self.assertEqual(d.outcome, "nothing")
         args, kwargs = runner.calls[0]
         self.assertEqual(args[:6], ["claude", "-p", "--model", "opus", "--effort", "high"])
-        self.assertEqual(args[args.index("--tools") + 1], "")
+        self.assertEqual(args[args.index("--tools") + 1], "Read,Grep,Glob")
+        self.assertEqual(args[args.index("--output-format") + 1], "stream-json")
+        self.assertIn("--verbose", args)
+        self.assertEqual(args[args.index("--max-turns") + 1], "60")
+        self.assertEqual(args[args.index("--max-budget-usd") + 1], "5.0")
+        self.assertEqual(kwargs["timeout"], 900)
         self.assertIn("--strict-mcp-config", args)
         self.assertEqual(args[args.index("--mcp-config") + 1], '{"mcpServers": {}}')
         self.assertEqual(args[args.index("--setting-sources") + 1], "project")   # no profile hooks, OAuth kept
@@ -232,7 +237,7 @@ class ClaudeReviewerTests(unittest.TestCase):
             (session,) = Path(d).iterdir()
             self.assertEqual(session.name, "20231114T221320Z_org__repo_7_1234567")
             self.assertEqual(sorted(p.name for p in session.iterdir()),
-                             ["decision.json", "meta.json", "prompt.md", "stderr.txt", "stdout.json"])
+                             ["decision.json", "files.tsv", "meta.json", "prompt.md", "stderr.txt", "stream.jsonl"])
             self.assertIn("org/repo#7", (session / "prompt.md").read_text())
             self.assertEqual(json.loads((session / "decision.json").read_text())["outcome"], "approve")
             self.assertEqual(json.loads((session / "meta.json").read_text())["exit"], 0)
@@ -244,7 +249,7 @@ class ClaudeReviewerTests(unittest.TestCase):
             with self.assertRaises(UnclearAnswer) as ctx:
                 ClaudeReviewer("opus", RULES, sessions_dir=Path(d), runner=runner).review_pr(make_pr())
             self.assertTrue(str(ctx.exception.session).startswith(d))
-            self.assertTrue((ctx.exception.session / "stdout.json").exists())
+            self.assertTrue((ctx.exception.session / "stream.jsonl").exists())
 
     def test_session_names_contain_untrusted_github_values(self):
         with tempfile.TemporaryDirectory() as d:
@@ -276,24 +281,22 @@ class ClaudeReviewerTests(unittest.TestCase):
         self.assertIn('"decision"', args[args.index("--json-schema") + 1])
         self.assertTrue(runner.system.startswith(DEPLOY_FRAME))
 
-    def test_oversized_context_is_nothing_with_notify_and_no_call(self):
-        runner = FakeRunner()
-        big = make_pr(files=(make_file("a.py", patch="x" * (CONTEXT_MAX_BYTES + 1)),))
-        d = ClaudeReviewer("opus", RULES, runner=runner).review_pr(big)
-        self.assertEqual((d.outcome, runner.calls), ("nothing", []))
-        self.assertIn("exceeds", d.notify)
-        self.assertFalse(d.model_notify)
-
-    def test_oversized_deployment_context_is_ignore_with_notify_and_no_call(self):
-        runner = FakeRunner()
-        run = make_run(base_sha="a" * 40, files=(make_file(patch="é" * (CONTEXT_MAX_BYTES // 2)),))
-        prompt = build_deploy_prompt(run, "production", [], {})
-        self.assertLess(len(prompt), CONTEXT_MAX_BYTES)
-        d = ClaudeReviewer("opus", RULES, runner=runner).review_deployment(run, "production", [], {})
-        self.assertEqual((d.outcome, runner.calls), ("ignore", []))
-        self.assertEqual(d.reason, f"context of {len(prompt.encode('utf-8'))} bytes exceeds the {CONTEXT_MAX_BYTES} byte cap")
-        self.assertIn(d.reason, d.notify)
-        self.assertFalse(d.model_notify)
+    def test_large_requests_reach_the_model_with_file_pointers(self):
+        for deployment in (False, True):
+            with self.subTest(deployment=deployment):
+                output = {"decision": "approve", "reason": "safe", "summary": "safe"} if deployment else ANSWER_V2
+                runner = FakeRunner(stdout=envelope(output))
+                reviewer = ClaudeReviewer("opus", RULES, runner=runner)
+                files = (make_file(patch="é" * 400_000),)
+                if deployment:
+                    decision = reviewer.review_deployment(make_run(base_sha=HEAD, files=files), "production", [], {})
+                else:
+                    decision = reviewer.review_pr(make_pr(files=files))
+                self.assertEqual(decision.outcome, "approve")
+                self.assertEqual(len(runner.calls), 1)
+                prompt = runner.calls[0][1]["input"]
+                self.assertIn("(in " + ("compare/" if deployment else "") + "diff/:", prompt)
+                self.assertLessEqual(len(prompt.encode("utf-8")), 200_000)
 
     def test_envelope_with_nonzero_exit_is_still_classified(self):
         poison = json.dumps({"type": "result", "is_error": True, "subtype": "error_max_turns", "result": ""})

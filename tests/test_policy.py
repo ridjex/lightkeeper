@@ -139,8 +139,9 @@ class EligibilityTests(unittest.TestCase):
     def test_file_list_must_match_github_count(self):
         self.assertEqual(self.outcome(make_pr(changed_files=1)), "review")
         d = evaluate_pr(make_pr(changed_files=2), self.policy)
-        self.assertEqual((d.outcome, d.reason), ("nothing", "file list incomplete: 1 of 2"))
-        self.assertIn("open it and decide", d.notify)
+        self.assertEqual(d.outcome, "review")
+        self.assertEqual(approve_floor(make_pr(changed_files=2)), "file list incomplete: 1 of 2")
+        self.assertEqual(self.outcome(make_pr(files=(), changed_files=2)), "review")
 
     def test_incomplete_patch_goes_to_the_model_marked(self):
         self.assertEqual(self.outcome(make_pr(files=())), "ignore")

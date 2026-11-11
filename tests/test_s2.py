@@ -159,7 +159,7 @@ class CommandTests(TestCase):
         self.assertEqual(self.command('reopen', self.key, HEAD).outcome, 'done')
         self.assertEqual(self.runner.commands.unfinished_tasks, 0)
         self.assertTrue(self.runner.commands.targets(self.key))
-        def review(*args):
+        def review(*args, **kwargs):
             self.assertFalse(self.runner.commands.put(Command('duplicate', 'reopen', self.key, HEAD)))
             return Decision('comment', 'private', 'ai', summary='public', why='Not approving yet: CI is pending.')
         self.reviewer.review_pr = Mock(side_effect=review)
@@ -173,7 +173,7 @@ class CommandTests(TestCase):
         self.assertTrue(self.runner.commands.put(Command('later', 'reopen', self.key, HEAD)))
 
     def test_reopen_during_normal_model_call_is_already_queued(self):
-        def review(*args):
+        def review(*args, **kwargs):
             self.assertFalse(self.runner.commands.put(Command('duplicate', 'reopen', self.key, HEAD)))
             return Decision('nothing', 'private', 'ai')
         self.reviewer.review_pr = Mock(side_effect=review)
@@ -363,6 +363,11 @@ class DetailPilots(IsolatedAsyncioTestCase):
                 await pilot.press('p', 'p')
                 await app.workers.wait_for_complete()
                 self.assertIn('stdout.json (read-only)\nunavailable', contents(app))
+                (session / 'stream.jsonl').write_text('{"type":"result","result":"stream answer"}')
+                await pilot.press('p', 'p')
+                await app.workers.wait_for_complete()
+                self.assertIn('stream.jsonl (read-only)', contents(app))
+                self.assertIn('stream answer', contents(app))
                 outside = replace(snapshot.detail(('org/repo', 7, HEAD))[0], session=str(root.parent))
                 detail = replace(snapshot.details[('org/repo', 7, HEAD)], latest_session=str(root.parent))
                 app.observer.snapshot = replace(snapshot, events={('org/repo', 7, HEAD): (outside,)},

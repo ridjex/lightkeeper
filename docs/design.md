@@ -13,14 +13,14 @@ the script posts.** No path globs, author lists or size ladders; repositories ar
   GitHub App, bot account, personal access token or Actions cron. Polls every 60 s.
 - One append-only JSONL journal is both state and ledger. One decision per PR head SHA or per
   (run, attempt, environment). State is re-checked immediately before every write.
-- One folder per model call under `sessions/`: prompt, stdout, stderr, meta, decision. Never overwritten.
+- One folder per model call under `sessions/`: `prompt.md`, `stream.jsonl`, `stderr.txt`, `meta.json`, `decision.json`, `files.tsv`. Never overwritten.
 - `dry-run` mode journals and notifies what it would do and writes nothing.
 - Shared by clone: configuration is outside the checkout; legacy `policy.toml` stays gitignored.
 
 ## 2. Settings outside the checkout
 
 Resolve `--config-dir`, then `LIGHTKEEPER_CONFIG`, then `~/.config/lightkeeper`.
-`settings.py` validates `settings.toml`: identity login; Claude engine/model/effort/profile/timeout;
+`settings.py` validates `settings.toml`: identity login; Claude engine/model/effort/profile/timeout/budget;
 comment language/disclosure; each repository's enabled/start/post/allowed/remarks/deployments.
 Defaults and a complete example are in README. Only `start = "request"` and `engine = "claude"` are supported today.
 Fresh installs without a legacy policy have no repositories and a persistent warning. `--check-repo org/name`
@@ -44,7 +44,7 @@ live lock when any enabled repository can post live. A reload cannot enable live
 `rules.md` is shared verbatim; optional `repos/<org>__<name>.md` is appended under `# Repository notes`.
 The code-owned frames and answer schemas are frozen inputs of the judgement hash. The twelve-character judgement hash covers
 both current frames/schemas, shared rules, repository notes and remarks. Component digests accompany journal
-records, so reloads and replay can explain rules/notes/remarks changes. Engine, model, profile, timeout, allowed
+records, so reloads and replay can explain rules/notes/remarks changes. Engine, model, profile, timeout, budget, allowed
 flags, enabled, post, deployment switch, comment settings, template and repository list are outside this hash.
 `template.md`, comment presentation and remarks severity filtering act on the structured answer.
 The legacy v1 marker abbreviated the judgement to six characters; the journal's `policy` field stores the full
@@ -63,20 +63,22 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   Required flags and base-branch declarations come from one extra GraphQL query per full fetch with a PR
   node ID. Missing declared contexts become pending checks; failed lookups use the old all-checks gate
   and log once per repository, PR and head. Required flags are excluded from the fingerprint.
-  GitHub's changed-file count must equal the files fetched, else `nothing` + notification. A missing patch
-  (binary or too large) is shown to the model as such; the rules say when that is acceptable.
+  An incomplete file list reaches the model with its fetched/expected counts. Missing patches (binary or
+  too large) are marked in the overview and on disk.
 - Deployment: `approval_requested` WorkflowRun notifications name the repository and update time;
   a run URL is optional. Fresh requests trigger one `actions/runs?status=waiting&per_page=50` listing
   per enabled repository with `deployments = true`, then the existing pending-environment path checks
   `current_user_can_approve`. Settled runs are remembered; journaled pending gates keep being checked
   without fresh notifications. Failed discovery retries; there is no sweep of every repository.
   Jobs still running → `defer`.
-- Context over the byte cap → `nothing` + notification, no call.
 - Model output must match the contract; anything else is `unclear`: settled for that input, owner notified.
-  The CLI giving up on one input (max turns, prompt too long) is `unclear` too, so one bad PR never pauses
-  the rest. CLI failures (auth, timeout, crash) pause model calls for 15 minutes and `defer`.
-- `approve` floor, checked by code after the model: bot author, failed check, patch not visible →
-  `nothing` + notification. The rules say the same; the floor exists because the model reads untrusted text.
+  A turn/budget limit, or a timeout after any tool call, is `unclear` too: settled for that input, journaled,
+  alerted and notified for PRs and deployments, with the bound and opened/offered file counts. A timeout
+  before any tool call remains a transport failure and retries under the normal model pause policy.
+- PR `approve` floors: bot author, failed check, patch omitted by GitHub, incomplete file list →
+  `nothing` + notification. A denied tool call refuses approval for both PRs and deployments, with the
+  first denial in the private reason, journal and notification. Unopened patches are the model's judgement.
+  Fresh PR floors are checked again before posting; other verdicts are unaffected by denied calls.
   An empty Git blob counts as visible without a patch, including a removed empty file; binary and
   oversized files without patches remain incomplete. Blob SHAs do not enter the context fingerprint.
 - Removed as reviewer before the tool ever reviewed → wait (the author handed it to someone else; a
@@ -84,8 +86,8 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   watched. Any manual review by the owner, a comment included, ends the tool's involvement with that PR.
 
 Model, with `rules.md` and repository notes:
-- PR: description, author, base/head, every check with link, tail of each failed job log (120 lines, at
-  most 5 jobs), reviews and the last 12 comments, file list, full diff →
+- PR: description, author, base/head, every check with link, complete collected failed job logs (the same
+  at-most-5 job requests as before), all collected reviews and comments, file list, full diff and head tree →
   `{"action": "approve|request_changes|comment|nothing", "why", "watch", "summary", "findings", "reason", "notify"}`.
   The public summary is capped at 600 characters; at most 12 findings have severity, origin and up to
   500 characters of text, plus optional path/URL. The prompt states the repository's remarks level and
@@ -143,15 +145,45 @@ run attempt, so an unknown one still needs a human.
 - Notifications are journal events (`notify`, with a tag for one-shot ones) and `--status` lists the last
   20; macOS `display notification` is the delivery, never the record.
 
-## 6. Launch of the model
+## 6. Workspace and model invocation
 
-`claude -p --model <model> --effort <effort> --output-format json --json-schema <contract> --tools ""
---strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources project --permission-mode dontAsk
---append-system-prompt-file <0600 file holding frame + rules.md + repository notes, inside the temporary directory>
---no-session-persistence --max-turns 3`, run from an empty temporary directory with only `PATH`, `HOME`, `USER`,
-`LOGNAME`, `SHELL`, `TERM`, `TMPDIR`, `LANG`, the profile (`CLAUDE_CONFIG_DIR`) and `ANTHROPIC_API_KEY` passed through. `--setting-sources project` keeps the
-profile's hooks and plugins out while OAuth keeps working; `--bare` does not
-read OAuth at all (probed on CLI 2.1).
+Every review gets a fresh 0700 directory of UTF-8 0600 material files. PRs have `request.md` (identity/title),
+`description.md`, `files.tsv`, `diff/0001.patch` onwards, `checks.md`, `reviews.md`, `comments.md`, `logs/01.log`
+onwards and `tree.txt`. TSV columns are number, status, additions, deletions, patch bytes, generated diff
+name, original path and previous path. Paths are escaped data, never filesystem names; each patch starts
+with `path: <path>`. Missing patches carry `(patch omitted by GitHub: binary or too large)`.
+The tree uses one recursive GitHub request at the head; truncation is marked on its first line. Timeouts and
+definite 4xx omit the file with a reason; rate limits and 5xx propagate to retry next tick.
+
+Deployments have `request.md`, `workflow.yml`, `jobs.tsv` (id/name/status/conclusion/log bytes/log file),
+complete `logs/01.log` onwards, and `compare/files.tsv` plus `compare/diff/0001.patch` onwards.
+The first overview section, Material on disk, lists files/directories with byte sizes and file counts,
+the turn/time allowance and collection problems (tree unavailable, incomplete list, missing comparison).
+The sections keep their order. Each is inlined whole while the request stays within `INLINE_MAX_BYTES =
+200_000` UTF-8 bytes; otherwise its body is `(in <file or directory>: <n> bytes)`. Space for subsequent
+pointers is reserved. The PR log tail and deployment `excerpt_log` remain inline conveniences; disk logs
+are complete. There is no pre-call size cap and no size rule selecting which material matters.
+
+`claude -p --model <model> --effort <effort> --output-format stream-json --verbose --json-schema <contract>
+--tools "Read,Grep,Glob" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources project
+--permission-mode dontAsk --append-system-prompt-file <0600 file in a separate private directory>
+--no-session-persistence --max-turns 60 --max-budget-usd <agent.budget_usd>` runs from that workspace.
+The system prompt is never material. Only `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `TMPDIR`, `LANG`,
+the profile (`CLAUDE_CONFIG_DIR`) and model credential (`ANTHROPIC_API_KEY`) pass through; no GitHub token.
+`--setting-sources project` keeps profile hooks and plugins out while OAuth keeps working. Built-in file
+tools are confined by the CLI's permission mode, not a broker or a kernel sandbox.
+
+The last stream `result` uses the existing envelope parser. Successful Read results produce distinct
+workspace-relative opened paths; attempted reads alone do not. Permission denials from system events and
+the result envelope are deduplicated into one-line tool/argument records. Private journal records add
+`opened`, `offered`, `denied`, `turns`, `cost_usd`, with denied calls retained for the approval floor and replay.
+Sessions keep the raw stream and file index, not separate patch files; old `stdout.json` sessions remain
+readable. PR detail shows opened/offered counts. No coverage sentence is added to public comments.
+
+Frame 4 hashes the new instructions. Frame 3 is frozen in `_frame_v3.py`; the frame-2 alias targets that
+frozen hash, never frame 4. No frame-3 alias exists: open contextual outcomes, including cap skips, get
+reviewed again once. Applied approvals, satisfied and owner approvals remain final. Turn, budget and time
+bounds live outside hashed text; their tuning does not reopen outcomes. Defaults: 60 turns, $5, 900 seconds.
 
 ## 7. Verification
 

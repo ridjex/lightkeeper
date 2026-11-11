@@ -9,7 +9,7 @@ from lightkeeper.__main__ import REVIEWER_PAUSE_S, Runner
 from lightkeeper.github import Gh, GhError, GhTimeout
 from lightkeeper.journal import Journal
 from lightkeeper.models import Check, Decision, MARKER, PendingEnvironment, Review, marker_line
-from lightkeeper.reviewer import CONTEXT_MAX_BYTES, Reviewer, ReviewerError, UnclearAnswer, pr_decision_v2
+from lightkeeper.reviewer import Reviewer, ReviewerError, UnclearAnswer, pr_decision_v2
 from tests.helpers import (APPLY_JOB, FakeGh, FakeReviewer, HEAD, PENDING_PROD, PLAN_JOB, PLAN_LOG_OK, make_file,
                            make_settings, make_pr, make_run)
 
@@ -200,14 +200,8 @@ class PullRequestLifecycle(LifecycleBase):
 
     def test_code_owned_nothing_still_alerts(self):
         cases = [(make_pr(author="robot[bot]"), Decision("nothing", "bot author", "eligibility", notify="Bot author")),
-                 (make_pr(changed_files=2), None),
+                 (make_pr(changed_files=2), APPROVE),
                  (make_pr(author="robot[bot]"), APPROVE)]
-        engine = Mock()
-        big = make_pr(files=(make_file(patch="x" * (CONTEXT_MAX_BYTES + 1)),))
-        capped = Reviewer(engine, "Rules").review_pr(big)
-        self.assertFalse(capped.model_notify)
-        engine.ask.assert_not_called()
-        cases.append((big, capped))
         for number, (pr, decision) in enumerate(cases, 20):
             with self.subTest(number=number):
                 pr = dataclasses.replace(pr, number=number)
@@ -459,8 +453,8 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(r.process_pr("org/repo", 7), "unclear")
         self.assertEqual(r.process_pr("org/repo", 7), "final")                    # no retry on the same input
         self.assertEqual(reviewer.calls, 1)
-        self.assertEqual(self.notified, ["org/repo#7: model answer unclear, see /s/1"])
-        self.assertEqual(self.journal.summary()["notifications"][0]["text"], "org/repo#7: model answer unclear, see /s/1")
+        self.assertEqual(self.notified, ["org/repo#7: not in contract; see /s/1"])
+        self.assertEqual(self.journal.summary()["notifications"][0]["text"], "org/repo#7: not in contract; see /s/1")
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(body="edited description")]
         self.assertEqual(r.process_pr("org/repo", 7), "applied")                  # new context: asked again
 
@@ -843,18 +837,19 @@ class DeploymentLifecycle(LifecycleBase):
         self.assertNotEqual(ignored(), before)
         self.assertEqual(reviewer.calls, 2)
 
-    def test_oversized_deployment_comparison_alerts_without_model_or_write(self):
+    def test_large_deployment_comparison_reaches_model(self):
+        from lightkeeper.engines.base import Answer, Diagnostics
         run = self.arm()
         self.gh.previous_success = Mock(return_value=make_run(run_id=99, head_sha="a" * 40))
-        self.gh.compare = Mock(return_value=[make_file(patch="x" * CONTEXT_MAX_BYTES)])
-        engine = Mock()
+        self.gh.compare = Mock(return_value=[make_file(patch="x" * 400_000)])
+        engine = Mock(label="claude/opus")
+        engine.ask.return_value = Answer({"decision": "approve", "reason": "safe", "summary": "safe"}, Diagnostics())
         r = self.runner(reviewer=Reviewer(engine, "Rules"))
-        self.assertEqual(r.process_run(run.repo, run.run_id), "ignore")
+        self.assertEqual(r.process_run(run.repo, run.run_id), "applied")
         self.assertEqual(r.process_run(run.repo, run.run_id), "final")
-        engine.ask.assert_not_called()
-        self.assertEqual(self.gh.writes, [])
-        self.assertEqual(len(self.notified), 1)
-        self.assertIn("byte cap", self.notified[0])
+        engine.ask.assert_called_once()
+        self.assertIn("(in compare/diff/:", engine.ask.call_args.args[1])
+        self.assertEqual(len(self.gh.writes), 1)
 
     def test_null_notifications_list_once_and_respect_scope_and_seen_runs(self):
         from unittest.mock import Mock

@@ -17,7 +17,6 @@ from .policy import approve_floor
 PR_VIEW_FIELDS = ("id,number,state,isDraft,headRefOid,baseRefName,author,title,body,reviewRequests,"
                   "statusCheckRollup,changedFiles,comments")
 REVIEW_EVENTS = {"approve": "APPROVE", "request_changes": "REQUEST_CHANGES", "comment": "COMMENT"}
-LOG_TAIL_LINES = 120
 SEARCH_LIMIT = 100
 _TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]+Z (.*)$")
 _STATUS_DONE = {"success", "failure", "error"}
@@ -391,6 +390,10 @@ class Gh:
         # One request: pagination here walks the commits, and the files list is capped at 300 whatever the page.
         return parse_files(self.json(["api", f"repos/{repo}/compare/{base_sha}...{head_sha}"]).get("files") or [])
 
+    def tree(self, repo: str, sha: str) -> tuple[list[str], bool]:
+        data = self.json(["api", f"repos/{repo}/git/trees/{sha}?recursive=1"])
+        return [entry["path"] for entry in data["tree"]], data["truncated"]
+
     def pull_request(self, repo: str, number: int) -> PullRequest:
         view = self.json(["pr", "view", str(number), "-R", repo, "--json", PR_VIEW_FIELDS])
         required_checks, declared_checks = None, None
@@ -468,7 +471,7 @@ class Gh:
                                       timeout_s=120, errors="replace"))
 
     def failed_check_logs(self, pr: PullRequest, limit: int = 5) -> list[tuple[Check, str]]:
-        """The tail of the log of every failed check that is an Actions job (at most `limit`), for CI triage.
+        """The complete log of every failed check that is an Actions job (at most `limit`), for CI triage.
         A log that cannot be read is reported as such rather than dropped."""
         out = []
         for check in [c for c in pr.checks if c.failed and c.job_id][:limit]:
@@ -476,10 +479,7 @@ class Gh:
                 text = self.job_log(pr.repo, check.job_id)
             except (GhError, GhTimeout) as exc:
                 text = f"(log not available: {exc})"
-            lines = text.splitlines()
-            tail = lines[-LOG_TAIL_LINES:]
-            prefix = f"(… {len(lines) - len(tail)} earlier lines omitted)\n" if len(lines) > len(tail) else ""
-            out.append((check, prefix + "\n".join(tail)))
+            out.append((check, text))
         return out
 
     def run_approvals(self, repo: str, run_id: int) -> list[tuple[str, str, tuple[int, ...]]]:

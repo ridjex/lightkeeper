@@ -5,6 +5,7 @@ import tomllib
 import unittest
 
 from lightkeeper.journal import Journal, SETTLED_EVENTS
+from lightkeeper.models import Decision
 from lightkeeper.migrate import legacy_policy_hash, rehash
 from lightkeeper.settings import judgement
 from lightkeeper.ui.model import Runtime
@@ -24,18 +25,20 @@ class RehashTests(unittest.TestCase):
     def append(self, event, key=KEY, **fields):
         return self.journal.append(kind="pr", key=key, event=event, policy="old123", mode="live", fingerprint="fp", **fields)
 
-    def test_frame_three_preserves_old_settlement_without_reasking(self):
+    def test_frame_two_alias_stops_at_frozen_frame_three(self):
         from dataclasses import replace
         from lightkeeper.__main__ import Runner
         from lightkeeper._frame_v2 import FRAME, SCHEMA
         from lightkeeper.reviewer import FRAME_VERSION
+        from lightkeeper._frame_v3 import FRAME as FRAME_3, SCHEMA as SCHEMA_3
         from tests.helpers import FakeGh, FakeReviewer, HEAD, make_pr, make_settings
         settings = make_settings()
         previous = judgement(FRAME, settings.rules, "", "important", SCHEMA).hash
         self.assertEqual(previous, "12324e754f32")  # hash produced by the frame-2 release
-        self.assertEqual(FRAME_VERSION, "3",
-                         "Freeze the frame-3 text and schema before bumping FRAME_VERSION.")
-        current = settings.judgement("org/repo").hash
+        self.assertEqual(FRAME_VERSION, "4")
+        current = judgement(FRAME_3, settings.rules, "", "important", SCHEMA_3).hash
+        self.assertEqual(current, "77666cbd56be")
+        self.assertNotEqual(current, settings.judgement("org/repo").hash)
         self.assertNotEqual(previous, current)
         pr = make_pr()
         key = (pr.repo, pr.number, HEAD)
@@ -58,12 +61,34 @@ class RehashTests(unittest.TestCase):
             changed = replace(settings, notes={pr.repo: "Require another test."})
             rehash(changed, journal)
             self.assertFalse(journal.is_final(key, changed.judgement(pr.repo).hash, "live", pr.fingerprint))
-            gh, reviewer = FakeGh(), FakeReviewer([])
+            gh, reviewer = FakeGh(), FakeReviewer([Decision("nothing", "reviewed again", "ai")])
             gh.pr_snapshots[key[:2]] = [pr]
             runner = Runner(settings, gh, journal, reviewer, live_lock_held=True)
             runner.process_pr(*key[:2])
-            self.assertEqual(reviewer.calls, 0)
+            self.assertEqual(reviewer.calls, 1)
             self.assertFalse(gh.writes)
+
+    def test_frame_four_reopens_contextual_outcomes_but_keeps_final_approvals(self):
+        from lightkeeper._frame_v3 import FRAME, SCHEMA
+        from tests.helpers import make_settings
+        settings = make_settings()
+        previous = judgement(FRAME, settings.rules, "", "important", SCHEMA).hash
+        current = settings.judgement("org/repo").hash
+        for kind in ("pr", "deployment"):
+            for event, fields, final in [(event, {}, False) for event in SETTLED_EVENTS] + [
+                    ("applied", {"action": "comment"}, False),
+                    ("applied", {"action": "request_changes"}, False),
+                    ("applied", {"action": "approve"}, True), ("satisfied", {}, True), ("owner_approve", {}, True)]:
+                with self.subTest(kind=kind, event=event, fields=fields):
+                    journal = Journal(self.path.with_name(f"{kind}-{event}-{fields.get('action', '')}.jsonl"))
+                    key = ("org/repo", 7, "head") if kind == "pr" else ("org/repo", 100, 1, 2)
+                    journal.append(kind=kind, key=key, event=event, policy=previous, mode="live", fingerprint="fp", **fields)
+                    rehash(settings, journal)
+                    self.assertNotIn(previous, journal.rehashes)
+                    self.assertEqual(journal.is_final(key, current, "live", "fp"), final)
+                    replay = Journal(journal.path)
+                    replay.replay()
+                    self.assertEqual(replay.is_final(key, current, "live", "fp"), final)
 
     def test_legacy_alias_can_chain_through_frame_upgrade_but_not_cycles(self):
         self.append("nothing")

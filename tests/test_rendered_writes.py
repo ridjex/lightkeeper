@@ -273,7 +273,7 @@ class RenderedWriteTests(unittest.TestCase):
         self.assertEqual(tuple(record['key']), key)
         session = Path(record['session'])
         self.assertTrue(session.is_dir())
-        self.assertTrue((session / 'stdout.json').is_file())
+        self.assertTrue((session / 'stream.jsonl').is_file())
         self.assertFalse((session / 'decision.json').exists())
         self.assertFalse((session / 'rendered.md').exists())
         self.assertFalse(any(r['event'] in ('assessment', 'ignore', 'applied') for r in self.records()))

@@ -35,13 +35,13 @@ class SettingsTests(unittest.TestCase):
                 self.load(text)
             self.assertEqual(error.exception.key, key)
 
-    def test_alert_settings_keep_the_existing_judgement_hash(self):
+    def test_alert_settings_do_not_change_the_judgement_hash(self):
         from tests.helpers import make_settings
-        # Captured before check deduplication and alert settings changed any code.
+        # Operational settings are outside the judgement.
         for enabled in (False, True):
             settings = make_settings(reviews=enabled)
-            self.assertEqual(settings.judgement('org/repo').hash, '77666cbd56be')
-            self.assertEqual(load_settings(settings.config_dir).judgement('org/repo').hash, '77666cbd56be')
+            self.assertEqual(settings.judgement('org/repo').hash, make_settings().judgement('org/repo').hash)
+            self.assertEqual(load_settings(settings.config_dir).judgement('org/repo').hash, make_settings().judgement('org/repo').hash)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -59,7 +59,7 @@ class SettingsTests(unittest.TestCase):
         (self.config / "rules.md").write_text("Review carefully.", encoding="utf-8")
         settings = self.load(MINIMUM + REPO)
         self.assertEqual(settings.login, "octocat")
-        self.assertEqual(settings.agent, AgentSettings("claude", "opus", "medium", None, 600))
+        self.assertEqual(settings.agent, AgentSettings("claude", "opus", "medium", None, 900))
         self.assertEqual(settings.comment, CommentSettings("en", True))
         self.assertEqual(settings.repo("example/widget"), RepoSettings("example/widget"))
         self.assertEqual(settings.repo("example/widget").allowed, ACTIONS)

@@ -111,7 +111,7 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(settings.login, "octocat")
         self.assertEqual((settings.agent.engine, settings.agent.model, settings.agent.effort,
                           settings.agent.profile, settings.agent.timeout_s),
-                         ("claude", "opus", "high", str(self.source / "profiles/reviewer"), 600))
+                         ("claude", "opus", "high", str(self.source / "profiles/reviewer"), 900))
         self.assertEqual(tuple(settings.repos), policy.repos)
         for repo in settings.repos.values():
             self.assertEqual((repo.enabled, repo.start, repo.post, repo.allowed, repo.remarks, repo.deployments),
@@ -164,7 +164,7 @@ class MigrationTests(unittest.TestCase):
         text = settings_toml(settings)
         raw = tomllib.loads(text)
         self.assertEqual(raw["agent"]["model"], settings.agent.model)
-        self.assertEqual(raw["agent"]["timeout_s"], 600)
+        self.assertEqual(raw["agent"]["timeout_s"], 900)
         self.assertEqual(raw["repos"]["example/widget"]["allowed"], ["approve", "request_changes", "comment"])
         self.assertIs(raw["repos"]["example/widget"]["deployments"], True)
         self.assertIn('[repos."example/widget"]', text)

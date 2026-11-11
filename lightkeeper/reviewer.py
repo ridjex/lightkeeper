@@ -1,5 +1,5 @@
 """The model call. The system prompt is a fixed frame plus RULES.md verbatim; the user turn carries only the
-request context. No tools, no MCP servers, no hooks, strict JSON output. Every call leaves a session folder."""
+request context. Read-only workspace tools, no MCP servers, no hooks, strict JSON output. Every call leaves a session folder."""
 from __future__ import annotations
 
 import json
@@ -12,12 +12,21 @@ from pathlib import Path
 
 from .engines.base import AnswerError, Engine, EngineError, InputError
 from .engines.claude import ClaudeEngine, parse_envelope as _parse_envelope
+from .workspace import Workspace, escape, write_private
 from .models import PR_ACTIONS, AnswerV2, ChangedFile, Check, Decision, Finding, Job, PullRequest, WorkflowRun
 
 PR_FRAME = """You are lightkeeper, reviewing a GitHub pull request for one engineer (the owner). The owner was
 asked to review it; a script re-checks the state and renders your public answer on GitHub in their name.
 The owner may not post every action, so give your honest verdict regardless of posting permissions.
-You cannot run anything or look anywhere else: everything you know is below.
+You cannot run anything or reach the network. The request below is the overview; the complete material
+is in files in your working directory, listed under "Material on disk", and you have Read, Grep and Glob
+to open them. A section that points to a file was too large to inline, not less important. Decide
+yourself what to open and how deeply: read what the verdict depends on, and skip what cannot change it
+(the bodies of deleted files, generated artifacts), using the file list, the description and tree.txt to
+judge what a deletion leaves behind. An approval means the change may go to production, so it must rest
+on what you actually looked at; why says what that was. Your allowance of steps and time is stated in the
+request: open several files in one step, and if the allowance cannot cover what an approval needs, give
+the verdict you can stand behind and say what you did not get to instead of guessing.
 
 Reply only with the JSON object
 {"action": "approve" | "request_changes" | "comment" | "nothing",
@@ -62,6 +71,14 @@ PR_SCHEMA = {
 }
 DEPLOY_FRAME = """You are lightkeeper, acting on GitHub for one engineer. A deployment approval was requested from
 them; your answer is submitted as their approval, in their name.
+You cannot run anything or reach the network. The request below is the overview; the complete workflow
+file, job logs and changes since the last successful run are in files in your working directory, listed
+under "Material on disk", and you have Read, Grep and Glob to open them. A section that points to a file
+was too large to inline, not less important. Decide yourself what to open and how deeply: read what the
+verdict depends on, and skip what cannot change it. An approval means the change may go to production,
+so it must rest on what you actually looked at; the summary says what that was. Your allowance of steps
+and time is stated in the request: open several files in one step, and if the allowance cannot cover
+what an approval needs, answer "ignore" and say what you did not get to instead of guessing.
 
 Reply only with the JSON object {"decision": "approve" | "ignore", "summary": "<public summary, at most 300 characters>",
 "reason": "<private sentence for the owner's journal, at most 300 characters; never published>"}.
@@ -78,7 +95,7 @@ DEPLOY_SCHEMA = {
     "required": ["decision", "reason"],
     "additionalProperties": False,
 }
-FRAME_VERSION = "3"
+FRAME_VERSION = "4"
 REMARKS_TEXT = {"blockers": "report blockers only", "important": "blockers and important",
                 "all": "everything you notice"}
 PR_SCHEMA_V2 = {
@@ -119,11 +136,9 @@ DEPLOY_SCHEMA_V2 = {
     "required": ["decision", "reason", "summary"],
     "additionalProperties": False,
 }
-CONTEXT_MAX_BYTES = 400_000          # roughly 100k tokens; above this the request is left to a human
-LOG_MAX_BYTES = 150_000              # a job log up to this size goes to the model whole; larger ones are excerpted
+LOG_MAX_BYTES = 150_000              # inline excerpts only; disk logs are always complete
 LOG_TAIL_LINES = 80
-COMMENT_MAX_CHARS = 4_000
-COMMENTS_MAX = 12
+PR_LOG_TAIL_LINES = 120  # Keep the previous CI triage tail inline; the complete log stays on disk.
 _PLAN_START = re.compile(r"^(Terraform will perform the following actions:|Terraform used the selected providers|"
                          r"No changes\.|Terraform planned the following actions)", re.MULTILINE)
 _PLAN_END = re.compile(r"^(Plan: .*$|No changes\..*$)", re.MULTILINE)
@@ -140,9 +155,10 @@ class ReviewerError(RuntimeError):
 class UnclearAnswer(RuntimeError):
     """The model answered, but not in the contract: do not retry on the same input; tell the owner."""
 
-    def __init__(self, message: str, session: Path | None):
+    def __init__(self, message: str, session: Path | None, data: dict | None = None):
         super().__init__(message)
         self.session = session
+        self.data = data or {}
 
 
 def system_prompt(frame: str, rules: str) -> str:
@@ -156,12 +172,8 @@ def _fence(text: str) -> str:
     return f"{fence}\n{text or ''}\n{fence}"
 
 
-def _clip(text: str, limit: int) -> str:
-    return text if len(text) <= limit else text[:limit] + f"\n(… cut, {len(text) - limit} more characters)"
-
-
 def _one_line(path: str) -> str:
-    return path.replace("\n", "\\n")          # git allows newlines in paths; a path must not start a heading line
+    return escape(path)
 
 
 def _file_list(files: tuple[ChangedFile, ...]) -> str:
@@ -177,28 +189,54 @@ def _diff(files: tuple[ChangedFile, ...]) -> str:
     return _fence("\n\n".join(f"--- {_one_line(f.path)}\n{f.patch if f.patch is not None else '(no patch)'}" for f in files))
 
 
-def build_pr_prompt(pr: PullRequest, failed_logs: list[tuple[Check, str]] = ()) -> str:
+def build_pr_prompt(pr: PullRequest, failed_logs: list[tuple[Check, str]] = (), *,
+                    workspace: Workspace | None = None, tree=None, tree_error="tree not collected",
+                    timeout_s: int = 900) -> str:
+    material = workspace if workspace is not None else Workspace()
+    log_names = {check: f"logs/{number:02d}.log" for number, (check, _) in enumerate(failed_logs, 1)}
     any_required = bool(pr.declared_required_checks) or any(c.required for c in pr.checks)
     checks = "\n".join(f"- {c.name}: {c.conclusion or c.status}"
                        + (" (required, not reported yet)" if not c.reported else
                           " (not required)" if any_required and not c.required else "")
                        + (f" — {c.details_url}" if c.details_url else "")
+                       + (f" — {log_names[c]}" if c in log_names else "")
                        for c in pr.checks) or "- (no checks ran on this head)"
     if pr.declared_required_checks == () and not any_required:
         checks += "\n(no checks are required on this repository)"
     author = f"{pr.author} (bot account)" if pr.author_is_bot else f"{pr.author} (user account)"
-    reviews = "\n".join(f"- {r.author}: {r.state} at {r.commit_sha[:7]}" + (f"\n{_fence(_clip(r.body, COMMENT_MAX_CHARS))}" if r.body.strip() else "")
+    reviews = "\n".join(f"- {r.author}: {r.state} at {r.commit_sha[:7]}" + (f"\n{_fence(r.body)}" if r.body else "")
                         for r in pr.reviews) or "- (none)"
-    comments = "\n\n".join(f"### {c.author}\n{_fence(_clip(c.body, COMMENT_MAX_CHARS))}"
-                           for c in pr.comments[-COMMENTS_MAX:]) or "(none)"
-    logs = "\n\n".join(f"### {c.name} ({c.conclusion}) — {c.details_url}\n{_fence(text)}" for c, text in failed_logs)
-    logs_section = f"\n\n## Logs of failed checks (tail)\n{logs}" if logs else ""
-    return (
-        f"# Request: pull request review\nRepository: {pr.repo}#{pr.number}\nAuthor: {author}\n"
-        f"Base: {pr.base_ref}  Head: {pr.head_sha[:7]}\nTitle: {_fence(pr.title)}\n\n## Description\n"
-        f"{_fence(pr.body or '(empty)')}\n\n## Checks\n{checks}{logs_section}\n\n## Reviews so far\n{reviews}\n\n"
-        f"## Comments so far (last {COMMENTS_MAX})\n{comments}\n\n## Changed files\n{_file_list(pr.files)}\n\n## Diff\n{_diff(pr.files)}\n"
-    )
+    comments = "\n\n".join(f"### {c.author}\n{_fence(c.body)}" for c in pr.comments) or "(none)"
+    sections = [("Description", material.put("description.md", pr.body or "(empty)"), _fence(pr.body or "(empty)")),
+                ("Checks", material.put("checks.md", checks), checks)]
+    failed_jobs = sum(c.failed and c.job_id is not None for c in pr.checks)
+    if len(failed_logs) < failed_jobs:
+        material.problems.append(f"failed check logs collected: {len(failed_logs)} of {failed_jobs} Actions jobs")
+    tails = []
+    for number, (check, text) in enumerate(failed_logs, 1):
+        material.put(f"logs/{number:02d}.log", text)
+        lines = text.splitlines()
+        prefix = f"(… {len(lines) - PR_LOG_TAIL_LINES} earlier lines omitted)\n" if len(lines) > PR_LOG_TAIL_LINES else ""
+        tail = prefix + "\n".join(lines[-PR_LOG_TAIL_LINES:])
+        tails.append(f"### {check.name} ({check.conclusion}) — {check.details_url}\n{_fence(tail)}")
+    if tails:
+        sections.append(("Logs of failed checks (tail)", "logs/", "\n\n".join(tails)))
+    material.changes(pr.files)
+    # The change itself is inlined before the discussion: a long thread must not push a small diff to disk.
+    sections.extend([("Changed files", "files.tsv", _file_list(pr.files)), ("Diff", "diff/" if pr.files else "files.tsv", _diff(pr.files)),
+                     ("Reviews so far", material.put("reviews.md", reviews), reviews),
+                     ("Comments so far", material.put("comments.md", comments), comments)])
+    if pr.changed_files is not None and pr.changed_files != len(pr.files):
+        material.problems.append(f"file list incomplete: {len(pr.files)} of {pr.changed_files}")
+    if tree is None:
+        material.problems.append(f"tree.txt absent: {tree_error}")
+    else:
+        paths, truncated = tree
+        material.put("tree.txt", ("(listing truncated by GitHub)\n" if truncated else "")
+                     + "\n".join(escape(path) for path in paths) + "\n")
+    header = (f"# Request: pull request review\nRepository: {pr.repo}#{pr.number}\nAuthor: {author}\n"
+              f"Base: {pr.base_ref}  Head: {pr.head_sha[:7]}\nTitle: {_fence(pr.title)}")
+    return material.prompt(header, sections, timeout_s)
 
 
 def excerpt_log(text: str) -> str:
@@ -220,34 +258,48 @@ def excerpt_log(text: str) -> str:
 
 
 def build_deploy_prompt(run: WorkflowRun, environment: str, jobs: list[Job], logs: dict[int, str],
-                        default_branch: str = "?", workflow_text: str | None = None) -> str:
-    """`logs` is keyed by job id so two jobs with the same name never collapse into one."""
+                        default_branch: str = "?", workflow_text: str | None = None, *,
+                        workspace: Workspace | None = None, timeout_s: int = 900) -> str:
+    """Logs are keyed by job id so two jobs with the same name never collapse into one."""
+    material = workspace if workspace is not None else Workspace()
+    log_names = {job_id: material.put(f"logs/{number:02d}.log", text)
+                 for number, (job_id, text) in enumerate(logs.items(), 1)}
+    rows = ["id\tname\tstatus\tconclusion\tlog bytes\tlog file"]
+    for job in jobs:
+        rows.append("\t".join(map(str, (job.job_id, escape(job.name), escape(job.status), escape(job.conclusion),
+                    len(logs.get(job.job_id, "").encode("utf-8")), log_names.get(job.job_id, "")))))
+    material.put("jobs.tsv", "\n".join(rows) + "\n")
     job_lines = "\n".join(f"- {j.name} (job {j.job_id}): {j.conclusion or j.status}" for j in jobs) or "- (no jobs)"
     by_id = {j.job_id: j for j in jobs}
     excerpts = "\n\n".join(f"### {by_id[i].name if i in by_id else '?'} (job {i})\n{_fence(excerpt_log(text))}"
                             for i, text in logs.items()) or "(no completed job logs)"
     workflow = _fence(workflow_text) if workflow_text else "(not available at this revision)"
-    changes_heading = "## Changes since the last successful run of this workflow"
+    material.put("workflow.yml", workflow_text or "(not available at this revision)")
+    material.changes(run.files, "compare/")
+    heading = "Changes since the last successful run of this workflow"
     if run.base_sha:
-        changes_heading += f" ({run.base_sha[:7]}...{run.head_sha[:7]})"
+        heading += f" ({run.base_sha[:7]}...{run.head_sha[:7]})"
     if run.comparison_error:
         changes = f"(no comparison available: {run.comparison_error})"
+        material.problems.append(changes)
     elif run.base_sha is None:
         changes = "(no earlier successful run of this workflow found on this branch)"
+        material.problems.append(changes)
     elif not run.files:
         changes = "(no changes)"
     else:
-        changes = f"{_file_list(run.files)}\n\n## Diff\n{_diff(run.files)}"
-        if len(run.files) >= 300:
-            changes += "\n(comparison reached GitHub's 300-file limit; additional files may be omitted)"
-    return (
-        f"# Request: deployment approval\nRepository: {run.repo} (default branch: {default_branch})\n"
-        f"Workflow: {run.workflow_file} (run {run.run_id}, attempt {run.attempt}, event {run.event})\n"
-        f"Branch: {run.head_branch} @ {run.head_sha[:7]}\nEnvironment waiting for approval: {environment}\n\n"
-        f"## Jobs\n{job_lines}\n\n## Workflow definition at this revision\n{workflow}\n\n"
-        f"{changes_heading}\n{changes}\n\n"
-        f"## Logs of completed jobs\n{excerpts}\n"
-    )
+        changes = _file_list(run.files)
+    if len(run.files) >= 300:
+        material.problems.append("comparison reached GitHub's 300-file limit; additional files may be omitted")
+    sections = [("Jobs", "jobs.tsv", job_lines), ("Workflow definition at this revision", "workflow.yml", workflow),
+                (heading, "compare/files.tsv", changes)]
+    if run.files:
+        sections.append(("Diff", "compare/diff/", _diff(run.files)))
+    sections.append(("Logs of completed jobs", "logs/" if logs else "jobs.tsv", excerpts))
+    header = (f"# Request: deployment approval\nRepository: {run.repo} (default branch: {default_branch})\n"
+              f"Workflow: {run.workflow_file} (run {run.run_id}, attempt {run.attempt}, event {run.event})\n"
+              f"Branch: {run.head_branch} @ {run.head_sha[:7]}\nEnvironment waiting for approval: {environment}")
+    return material.prompt(header, sections, timeout_s)
 
 
 def parse_envelope(stdout: str) -> dict:
@@ -334,8 +386,13 @@ def parse_deploy_answer(out: dict) -> Decision:
     return Decision(decision, reason.strip()[:300], "ai")
 
 
+def trace_data(trace, offered):
+    return {"opened": len(trace.opened), "offered": offered, "denied": len(trace.denied),
+            "denied_calls": list(trace.denied), "turns": trace.turns, "cost_usd": trace.cost_usd}
+
+
 class Reviewer:
-    def __init__(self, engine: Engine, rules: str, sessions_dir: Path | None = None, timeout_s: int = 600,
+    def __init__(self, engine: Engine, rules: str, sessions_dir: Path | None = None, timeout_s: int = 900,
                  clock=time.time):
         self.engine = engine
         self.rules = rules
@@ -347,17 +404,22 @@ class Reviewer:
     def session_metadata(self) -> dict:
         return {"model": self.engine.label, "effort": ""}
 
-    def review_pr(self, pr: PullRequest, failed_logs: list[tuple[Check, str]] = ()) -> Decision:
+    def review_pr(self, pr: PullRequest, failed_logs: list[tuple[Check, str]] = (), *,
+                  tree=None, tree_error="tree not collected") -> Decision:
         name = self._session_name(pr.repo, pr.number, pr.head_sha)
         frame = PR_FRAME.replace("{remarks}", REMARKS_TEXT[self.remarks])
-        return self._ask(build_pr_prompt(pr, failed_logs), frame, PR_SCHEMA_V2, pr_decision_v2, name)
+        material = Workspace()
+        prompt = build_pr_prompt(pr, failed_logs, workspace=material, tree=tree, tree_error=tree_error, timeout_s=self.timeout_s)
+        return self._ask(prompt, frame, PR_SCHEMA_V2, pr_decision_v2, name, material)
 
     def review_deployment(self, run: WorkflowRun, environment: str, jobs: list[Job], logs: dict[int, str],
                           default_branch: str = "?", workflow_text: str | None = None) -> Decision:
         environment_slug = re.sub(r"[^A-Za-z0-9_-]", "_", environment)[:48] or "_"
         name = self._session_name(run.repo, run.run_id, run.head_sha) + f"_{environment_slug}"
-        return self._ask(build_deploy_prompt(run, environment, jobs, logs, default_branch, workflow_text),
-                         DEPLOY_FRAME, DEPLOY_SCHEMA_V2, parse_deploy_answer_v2, name)
+        material = Workspace()
+        prompt = build_deploy_prompt(run, environment, jobs, logs, default_branch, workflow_text,
+                                     workspace=material, timeout_s=self.timeout_s)
+        return self._ask(prompt, DEPLOY_FRAME, DEPLOY_SCHEMA_V2, parse_deploy_answer_v2, name, material)
 
     @staticmethod
     def _session_name(repo: str, number: int, head: str) -> str:
@@ -385,54 +447,55 @@ class Reviewer:
         os.chmod(path, 0o700)
         return path
 
-    def _ask(self, prompt: str, frame: str, schema: dict, parse, name: str) -> Decision:
+    def _ask(self, prompt: str, frame: str, schema: dict, parse, name: str, material: Workspace) -> Decision:
         size = len(prompt.encode("utf-8"))
-        if size > CONTEXT_MAX_BYTES:
-            reason = f"context of {size} bytes exceeds the {CONTEXT_MAX_BYTES} byte cap"
-            return Decision("nothing" if schema is PR_SCHEMA_V2 else "ignore", reason, "ai", notify=f"{name}: {reason}")
         session = self._session(name)
         system = system_prompt(frame, self.rules)
         if session:
-            (session / "prompt.md").write_text(f"{system}\n\n{prompt}", encoding="utf-8")
+            write_private(session / "prompt.md", f"{system}\n\n{prompt}")
+            write_private(session / "files.tsv", material.files.get("files.tsv", material.files.get("compare/files.tsv", "")))
         try:
             with tempfile.TemporaryDirectory(prefix="lightkeeper-") as cwd:
+                material.write(Path(cwd))
                 answer = self.engine.ask(system, prompt, schema, self.timeout_s, Path(cwd))
         except EngineError as exc:
             self._diagnostics(session, exc.diagnostics, size)
             if isinstance(exc, (InputError, AnswerError)):
-                raise UnclearAnswer(str(exc), session) from exc
+                raise UnclearAnswer(str(exc), session, trace_data(exc.trace, len(material.files))) from exc
             raise ReviewerError(f"{exc} (session {session})", exc) from exc
         self._diagnostics(session, answer.diagnostics, size)
         try:
             decision = parse(answer.parsed)
         except UnclearAnswer as exc:
-            raise UnclearAnswer(str(exc), session) from exc
+            raise UnclearAnswer(str(exc), session, trace_data(answer.trace, len(material.files))) from exc
         decision = replace(decision, data={**decision.data, "engine": self.engine.label,
+                                          **trace_data(answer.trace, len(material.files)),
                                           **({"session": str(session)} if session else {})})
         if session:
-            (session / "decision.json").write_text(json.dumps(asdict(decision), indent=1, ensure_ascii=False), encoding="utf-8")
+            write_private(session / "decision.json", json.dumps(asdict(decision), indent=1, ensure_ascii=False))
         return decision
 
     def _diagnostics(self, session, diagnostics, size):
         if session is None or (diagnostics.stdout is None and diagnostics.stderr is None):
             return
         # Preserve legacy artifacts: a timeout has partial streams but no completed-process metadata.
-        for name, value in (("stdout.json", diagnostics.stdout), ("stderr.txt", diagnostics.stderr)):
+        for name, value in (("stream.jsonl", diagnostics.stdout), ("stderr.txt", diagnostics.stderr)):
             if isinstance(value, bytes):
                 (session / name).write_bytes(value)
+                (session / name).chmod(0o600)
             else:
-                (session / name).write_text(value or "", encoding="utf-8")
+                write_private(session / name, value or "")
         if diagnostics.exit_code is not None:
             meta = {**self.session_metadata(), "exit": diagnostics.exit_code, "bytes": size,
                     "command": diagnostics.command_without_secrets}
-            (session / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+            write_private(session / "meta.json", json.dumps(meta, indent=1))
 
 
 class ClaudeReviewer(Reviewer):
     """Compatibility constructor and legacy session metadata for the CLI entry point."""
     def __init__(self, model: str, rules: str, claude_config_dir: str | None = None, effort: str = "medium",
-                 sessions_dir: Path | None = None, runner=None, timeout_s: int = 600, clock=time.time):
-        super().__init__(ClaudeEngine(model, claude_config_dir, effort, runner, clock), rules,
+                 sessions_dir: Path | None = None, runner=None, timeout_s: int = 900, clock=time.time, budget_usd: float = 5.0):
+        super().__init__(ClaudeEngine(model, claude_config_dir, effort, runner, clock, budget_usd), rules,
                          sessions_dir, timeout_s, clock)
 
     def session_metadata(self) -> dict:

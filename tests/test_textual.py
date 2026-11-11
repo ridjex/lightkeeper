@@ -291,7 +291,7 @@ class RunnerTests(TestCase):
         entered, released = threading.Event(), threading.Event()
         engine = Mock()
         engine.cancel.side_effect = released.set
-        def review(*args):
+        def review(*args, **kwargs):
             entered.set()
             released.wait(2)
             return Decision('approve', 'reason', 'ai', summary='Ready.')
@@ -347,7 +347,7 @@ class RunnerTests(TestCase):
     def test_engine_real_subprocess_receives_prompt_only_on_stdin(self):
         engine = ClaudeEngine('test')
         command = [sys.executable, '-c',
-                   'import json,sys; print(json.dumps({"structured_output": {"prompt": sys.stdin.read()}}))',
+                   'import json,sys; print(json.dumps({"type": "result", "structured_output": {"prompt": sys.stdin.read()}}))',
                    '--append-system-prompt', 'synthetic system']
         with patch.object(engine, 'command', return_value=command):
             result = engine.ask('synthetic system', 'synthetic request', {}, 2, self.root)
@@ -933,7 +933,7 @@ class MainThreadTests(TestCase):
         engine = Mock()
         engine.cancel.side_effect = release.set
         def target(runner, gh):
-            def review(*args):
+            def review(*args, **kwargs):
                 entered.set()
                 release.wait(2)
                 return Decision('approve', 'reason', 'ai', summary='Ready.')

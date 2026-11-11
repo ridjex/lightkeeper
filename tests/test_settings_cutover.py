@@ -507,7 +507,9 @@ class StartupTests(unittest.TestCase):
         self.gh.login = lambda **kwargs: 'octocat'
         result = self.main(['--allow-live'], lambda *args: 0)
         self.assertEqual(result[0], 0, result[2])
-        self.assertIn(f"rehash frame 2 -> { {repo: settings.judgement(repo).hash} }", result[1])
+        from lightkeeper._frame_v3 import FRAME as FRAME_3, SCHEMA as SCHEMA_3
+        target = judgement(FRAME_3, settings.rules, settings.notes.get(repo, ""), settings.repo(repo).remarks, SCHEMA_3).hash
+        self.assertIn(f"rehash frame 2 -> { {repo: target} }", result[1])
         result = self.main(['--allow-live'], lambda *args: 0)
         self.assertEqual(result[0], 0, result[2])
         self.assertNotIn('rehash frame 2', result[1])

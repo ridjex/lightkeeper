@@ -192,6 +192,13 @@ def check_repo(gh, name: str) -> str:
     return "archived" if info["archived"] else f"access ok · default branch {info['default_branch']}"
 
 
+def denied_floor(decision: Decision) -> str | None:
+    denied = decision.data.get("denied_calls", ())
+    if denied:
+        return f"a denied file-tool call (outside the workspace): {denied[0]}"
+    return None
+
+
 class Runner:
     def __init__(self, settings: Settings, gh, journal: Journal, reviewer=None, clock=time.time, notifier=macos_notify,
                  observer=None, live_lock_held=False, global_mode="live", sleeper=time.sleep):
@@ -666,6 +673,7 @@ class Runner:
             return Decision("defer", reason, "ai")
         try:
             failed_logs = self.gh.failed_check_logs(pr)
+            tree, tree_error = self._tree(pr)
             self._reviewing_key = (pr.repo, pr.number, pr.head_sha)
             self.commands.reviewing(self._reviewing_key, True)
             self.observe("phase", phase="reviewing", kind="pr", key=self._reviewing_key)
@@ -674,7 +682,7 @@ class Runner:
             # "Currently reviewing" is enforced by not draining commands during a model call;
             # the inbox also refuses duplicates until the resulting review settles.
             try:
-                decision = self.reviewer.review_pr(pr, failed_logs)
+                decision = self.reviewer.review_pr(pr, failed_logs, tree=tree, tree_error=tree_error)
             finally:
                 self.observe("phase", phase="checking")
             self._auth_notified = False
@@ -684,8 +692,8 @@ class Runner:
             if self.cancelled:
                 return Decision("defer", "stopping", "ai")
             self._probe_engine()
-            return Decision("unclear", str(exc)[:300], "ai", data={"session": str(exc.session or "")},
-                            notify=f"{pr.repo}#{pr.number}: model answer unclear, see {exc.session}")
+            return Decision("unclear", str(exc)[:300], "ai", data={"session": str(exc.session or ""), **exc.data},
+                            notify=f"{pr.repo}#{pr.number}: {exc}; see {exc.session}")
         except ReviewerError as exc:
             if self.cancelled:
                 return Decision("defer", "stopping", "ai")
@@ -701,7 +709,8 @@ class Runner:
         def notify(outcome, message, *, model_text=False):
             if notified and previous == outcome:
                 return
-            warned = outcome not in ("approve", "satisfied", "defer", "would_approve") and self._warn_if_block_active(key, pr)
+            warned = (outcome not in ("approve", "satisfied", "defer", "would_approve", "unclear")
+                      and not denied_floor(decision) and self._warn_if_block_active(key, pr))
             if not warned and (not model_text or self.settings.alerts.reviews):
                 self._notify("pr", key, message)
         if decision.outcome in ("satisfied", "ignore", "nothing", "unclear"):
@@ -727,18 +736,18 @@ class Runner:
                       summary=decision.summary, why=decision.why, watch=decision.watch,
                       findings=[asdict(f) for f in decision.findings],
                       data=decision.data, **fields)
-        if boundary := self._boundary(pr.repo, action):
-            return self._discard("pr", key, decision, boundary, pr.fingerprint)
-        blocked = approve_floor(pr) if action == "approve" else None
+        blocked = (denied_floor(decision) or approve_floor(pr)) if action == "approve" else None
         if blocked:                                           # the floor the model cannot be talked out of
             self._journal("pr", key, "nothing", reason=f"approve refused by the floor: {blocked}", source="eligibility",
-                          fingerprint=pr.fingerprint)
+                          fingerprint=pr.fingerprint, **decision.data)
             message = (f"the model wanted to approve but {blocked.removeprefix('patch not visible: ')} has no patch to read; "
                        "open it, and press A in its detail to approve as owner if it is fine"
                        if blocked.startswith("patch not visible: ") else
                        f"the model wanted to approve despite {blocked}; open it and decide")
             notify("nothing", f"{pr.repo}#{pr.number}: {message}")
             return "nothing"
+        if boundary := self._boundary(pr.repo, action):
+            return self._discard("pr", key, decision, boundary, pr.fingerprint)
         try:
             result = self._write_pr(pr, decision)
         except GhError as exc:
@@ -802,6 +811,8 @@ class Runner:
                 return {"defer": "context changed during assessment (base, description, checks, reviews or files)"}
             if again.outcome != "review":
                 return {"defer": f"state changed before write: {again.reason}"}
+            if action == "approve" and (floor := approve_floor(fresh)):
+                return {"defer": f"approval floor changed before write: {floor}"}
             wanted = _REVIEW_STATES[action]
             if any(r.author == self.settings.login and r.state == wanted and r.commit_sha == pr.head_sha
                    and is_automated(r.body) for r in fresh.reviews):
@@ -921,13 +932,23 @@ class Runner:
             if self.cancelled:
                 return Decision("defer", "stopping", "ai")
             self._probe_engine()
-            return Decision("unclear", str(exc)[:300], "ai", data={"session": str(exc.session or "")},
-                            notify=f"deployment: model answer unclear, see {exc.session}")
+            return Decision("unclear", str(exc)[:300], "ai", data={"session": str(exc.session or ""), **exc.data},
+                            notify=f"deployment: {exc}; see {exc.session}")
         except ReviewerError as exc:
             if self.cancelled:
                 return Decision("defer", "stopping", "ai")
             self._pause_reviewer(exc)
             return Decision("defer", f"reviewer failed: {exc}"[:200], "ai")
+
+    def _tree(self, pr: PullRequest):
+        try:
+            return self.gh.tree(pr.repo, pr.head_sha), ""
+        except GhTimeout as exc:
+            return None, " ".join(str(exc).split())
+        except GhError as exc:
+            if exc.rate_limited or not exc.definite:
+                raise
+            return None, " ".join(str(exc).split())
 
     def _with_comparison(self, run: WorkflowRun, *, files: bool) -> WorkflowRun:
         """The run with the head of the last successful run of its workflow on its branch and, when `files` is set,
@@ -1016,7 +1037,12 @@ class Runner:
         assert decision.outcome == "approve", decision
         self._journal(kind, key, "assessment", action="approve", reason=decision.reason, source=decision.source,
                       fingerprint=fingerprint, body=decision.body, summary=decision.summary,
-                      notify=decision.notify, data=decision.data)
+                      notify=decision.notify, data=decision.data, **decision.data)
+        if blocked := denied_floor(decision):
+            self._journal(kind, key, "ignore", reason=f"approve refused by the floor: {blocked}",
+                          source="eligibility", fingerprint=fingerprint, **decision.data)
+            self._notify(kind, key, f"deployment {key_str(key)}: {blocked}; open it and decide")
+            return "ignore"
         if boundary := self._boundary(key[0], "approve", deployment=True):
             return self._discard(kind, key, decision, boundary, fingerprint)
         try:
@@ -1283,6 +1309,7 @@ class Runner:
             self.reviewer.timeout_s = settings.agent.timeout_s
             engine = getattr(self.reviewer, "engine", None)
             if isinstance(engine, ClaudeEngine):
+                engine.budget_usd = settings.agent.budget_usd
                 profile_changed = engine.profile != settings.resolved_profile
                 engine.model, engine.effort, engine.profile = settings.agent.model, settings.agent.effort, settings.resolved_profile
                 if profile_changed:
@@ -1630,7 +1657,8 @@ def main(argv=None) -> int:
                     print(f"gh is logged in as {login!r} but settings expects {settings.login!r}", file=sys.stderr)
                     return 2
             reviewer = ClaudeReviewer(settings.agent.model, settings.rules, settings.resolved_profile, settings.agent.effort,
-                                      sessions_dir=state_dir / "sessions", timeout_s=settings.agent.timeout_s)
+                                      sessions_dir=state_dir / "sessions", timeout_s=settings.agent.timeout_s,
+                                      budget_usd=settings.agent.budget_usd)
             log(f"lightkeeper  pid={os.getpid()}  mode={'live' if live else 'dry-run'}  login={settings.login}  "
                 f"model={settings.agent.model}/{settings.agent.effort}  settings={config}")
             log(f"global mode ceiling: {mode} ({mode_reason}); notifications {'on' if notifications else 'off'}")

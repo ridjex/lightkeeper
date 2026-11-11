@@ -6,14 +6,15 @@ These are the rules that are easy to break without noticing.
 
 ## Boundaries that must hold
 
-- **The model proposes, the code posts.** The model has no tools, no network and no say over the three
-  floors (bot author, failed check, missing patch). Never route a write through model output.
+- **The model proposes, the code posts.** The model has Read, Grep and Glob confined to a workspace the
+  script wrote; no shell, network or GitHub token. It has no say over the approval floors (bot author,
+  failed check, missing patch, incomplete file list, denied file-tool call). Never route a write through model output.
 - **One review per head and action.** Posting re-fetches the pull request and compares head, description,
   checks, files and reviews before writing; approvals carry `commit_id`. Keep that check in front of every write.
 - **Frozen text is hashed.** The prompt frame in `lightkeeper/reviewer.py` and the rules, repository notes,
   remarks level and answer schema form the judgement hash; changing a word re-opens every settled outcome
-  for every user. `lightkeeper/_frame_v2.py` and `policy.SEMANTICS_VERSION` are frozen legacy inputs for
-  re-hashing old journals: never edit them.
+  for every user. `lightkeeper/_frame_v2.py`, `lightkeeper/_frame_v3.py` and `policy.SEMANTICS_VERSION` are frozen
+  legacy inputs for re-hashing old journals: never edit them.
 - **Journal records are append-only and forward-compatible.** New record kinds and fields are fine; never
   change the meaning of an existing field, never rewrite the file (except the torn-tail repair in
   `journal.py`, which only truncates an incomplete last line). `--status` and replay must never write.
@@ -21,7 +22,7 @@ These are the rules that are easy to break without noticing.
   tool recognises its own reviews; the former name `approval-delegate` must stay recognised. Model text is
   neutralised so it can never forge a trace or a marker line.
 - **Secrets and raw text never travel as command-line arguments.** Prompts go through stdin; the model runs
-  in an empty temporary directory with a scrubbed environment.
+  in a private workspace holding only request material, with a scrubbed environment.
 - **Every boundary is UTF-8** regardless of locale: subprocess pipes, persisted files, log streams.
 - **Configuration and state directories are private** (0700/0600) and are never written by the screen; the
   Runner owns writes and holds the locks. Settings saves patch one table atomically.

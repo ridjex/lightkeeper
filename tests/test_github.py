@@ -386,7 +386,7 @@ class GhTests(unittest.TestCase):
             self.assertEqual(json.loads(kwargs["input"]),
                              {"commit_id": pr.head_sha, "event": event, "body": "lightkeeper: rule"})
 
-    def test_failed_check_logs_tail_by_job_link(self):
+    def test_failed_check_logs_whole_by_job_link(self):
         from lightkeeper.models import Check
         pr = parse_pull_request("org/repo", load("pr_view.json"), load("pr_files.json"), load("pr_reviews.json"))
         failed = Check("sast", "completed", "failure", "https://github.com/org/repo/actions/runs/1/job/77")
@@ -395,7 +395,8 @@ class GhTests(unittest.TestCase):
         logs = Gh(runner=runner).failed_check_logs(pr)
         self.assertEqual([c.name for c, _ in logs], ["sast"])
         self.assertIn("repos/org/repo/actions/jobs/77/logs", runner.calls[0][0])
-        self.assertTrue(logs[0][1].startswith("(… 80 earlier lines omitted)"))
+        self.assertEqual(logs[0][1], runner.stdout)
+        self.assertEqual(len(runner.calls), 1)
         self.assertTrue(logs[0][1].endswith("line 199"))
 
     def test_approve_deployment_sends_single_environment(self):

@@ -147,6 +147,7 @@ class Projection:
             latest_summary=latest.summary if event == "assessment" else latest.summary or detail.latest_summary,
             latest_why=rec.get("why", "") if event == "assessment" else detail.latest_why,
             latest_watch=rec.get("watch", "") if event == "assessment" else detail.latest_watch,
+            opened=rec.get("opened", detail.opened), offered=rec.get("offered", detail.offered),
             latest_verdict=rec.get("action", "") if event == "assessment" else detail.latest_verdict,
             approve_refusal=status.approve_refusal if status and status.head == item.head else detail.approve_refusal,
             latest_findings=tuple(Finding.from_record(f) for f in rec.get("findings", ()))

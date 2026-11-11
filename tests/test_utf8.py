@@ -13,8 +13,8 @@ class Utf8Tests(unittest.TestCase):
         from lightkeeper.github import Gh
         from lightkeeper.engines.claude import ClaudeEngine
         value = 'café 日本'
-        runner = Mock(return_value=subprocess.CompletedProcess([], 0, '{"structured_output": {}}', ''))
-        with patch('os.fsdecode', side_effect=lambda raw: raw.decode('ascii', 'surrogateescape')):
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, '{"type":"result","structured_output": {}}', ''))
+        with patch('os.fsdecode', side_effect=lambda raw: raw.decode('ascii', 'surrogateescape') if isinstance(raw, bytes) else raw):
             Gh(runner=runner).run(['api', '-f', value])
             self.assertEqual(runner.call_args.args[0][-1].encode('ascii', 'surrogateescape'), value.encode('utf-8'))
             ClaudeEngine('opus', runner=runner).ask(value, value, {}, 10, Path('.'))
@@ -50,7 +50,7 @@ def claude_runner(command, **kwargs):
         code = ''
     else:
         assert Path(command[command.index('--append-system-prompt-file') + 1]).read_text(encoding='utf-8').find(value) >= 0
-        output = {'structured_output': {'action': 'approve', 'why': value, 'watch': '',
+        output = {'type': 'result', 'structured_output': {'action': 'approve', 'why': value, 'watch': '',
                   'summary': value, 'findings': [], 'reason': value}}
         code = 'assert ' + repr(value.encode('utf-8')) + ' in sys.stdin.buffer.read(); '
     code = 'import sys; ' + code + 'sys.stdout.buffer.write(' + repr(json.dumps(output, ensure_ascii=False).encode('utf-8')) + ')'

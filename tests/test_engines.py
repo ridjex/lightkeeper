@@ -81,7 +81,7 @@ class EnvelopeTests(unittest.TestCase):
                     with self.subTest(detail=detail, api_key=bool(api_key), envelope=envelope), patch.dict(os.environ):
                         if api_key is not None:
                             os.environ["ANTHROPIC_API_KEY"] = api_key
-                        stdout = json.dumps({"is_error": True, "result": detail}) if envelope else ""
+                        stdout = json.dumps({"type": "result", "is_error": True, "result": detail}) if envelope else ""
                         runner = Mock(return_value=subprocess.CompletedProcess([], 1, stdout, detail))
                         engine = ClaudeEngine("opus", "/tmp/test-profile", runner=runner)
                         with self.assertRaises(AuthError) as caught:
@@ -148,7 +148,8 @@ class ProbeTests(unittest.TestCase):
                 self.assertEqual(list(cwd.iterdir()), [])
             else:
                 system_file = Path(command[command.index("--append-system-prompt-file") + 1])
-                self.assertEqual(list(cwd.iterdir()), [system_file])
+                self.assertFalse(system_file.is_relative_to(cwd))
+                self.assertTrue((cwd / "diff/0001.patch").exists())
                 self.assertEqual(system_file.stat().st_mode & 0o777, 0o600)
                 self.assertIn(RULES, system_file.read_text(encoding="utf-8"))
                 self.assertNotIn(RULES, " ".join(command))
@@ -168,7 +169,8 @@ class ProbeTests(unittest.TestCase):
                 root = Path(directory)
                 def run(command, **kwargs):
                     system_file = Path(command[command.index("--append-system-prompt-file") + 1])
-                    self.assertEqual(system_file.parent, root)
+                    self.assertFalse(system_file.is_relative_to(root))
+                    self.assertEqual(system_file.parent.stat().st_mode & 0o777, 0o700)
                     self.assertEqual(system_file.stat().st_mode & 0o777, 0o600)
                     self.assertEqual(system_file.read_text(encoding="utf-8"), "private rules café")
                     self.assertNotIn("private rules", " ".join(command))
@@ -218,7 +220,7 @@ class SessionTests(unittest.TestCase):
                                    "command": [a for a in command if not a.startswith("You are")]})
             self.assertEqual((session / "prompt.md").read_text(),
                              system_prompt(PR_FRAME.replace("{remarks}", "blockers and important"), RULES) + "\n\n" + runner.call_args.kwargs["input"])
-            self.assertEqual((session / "stdout.json").read_text(), json.dumps(FIXTURES["success"]))
+            self.assertEqual((session / "stream.jsonl").read_text(), json.dumps(FIXTURES["success"]))
             engine = Mock(label="other/model")
             engine.ask.return_value = Answer(FIXTURES["success"]["structured_output"], Diagnostics("raw", "", 0, ["other"]))
             self.assertEqual(Reviewer(engine, RULES).review_pr(make_pr()).outcome, "approve")
@@ -231,7 +233,7 @@ class SessionTests(unittest.TestCase):
                 with self.assertRaises(expected) as caught:
                     ClaudeReviewer("opus", RULES, sessions_dir=Path(directory), runner=Mock(return_value=proc)).review_pr(make_pr())
                 session = next(Path(directory).iterdir())
-                self.assertEqual({p.name for p in session.iterdir()}, {"prompt.md", "stdout.json", "stderr.txt", "meta.json"})
+                self.assertEqual({p.name for p in session.iterdir()}, {"prompt.md", "files.tsv", "stream.jsonl", "stderr.txt", "meta.json"})
                 if expected is UnclearAnswer:
                     self.assertEqual(caught.exception.session, session)
                 else:
@@ -239,7 +241,7 @@ class SessionTests(unittest.TestCase):
 
     def test_timeout_and_missing_cli_artifacts(self):
         for exc, files in ((subprocess.TimeoutExpired("claude", 10, output=b"partial\xe2", stderr=b"error"),
-                            {"prompt.md", "stdout.json", "stderr.txt"}), (FileNotFoundError(), {"prompt.md"})):
+                            {"prompt.md", "files.tsv", "stream.jsonl", "stderr.txt"}), (FileNotFoundError(), {"prompt.md", "files.tsv"})):
             with self.subTest(exc=exc), tempfile.TemporaryDirectory() as directory:
                 with self.assertRaises(ReviewerError) as caught:
                     ClaudeReviewer("opus", RULES, sessions_dir=Path(directory), runner=Mock(side_effect=exc)).review_pr(make_pr())
@@ -247,4 +249,4 @@ class SessionTests(unittest.TestCase):
                 session = next(Path(directory).iterdir())
                 self.assertEqual({p.name for p in session.iterdir()}, files)
                 if isinstance(exc, subprocess.TimeoutExpired):
-                    self.assertEqual((session / "stdout.json").read_bytes(), b"partial\xe2")
+                    self.assertEqual((session / "stream.jsonl").read_bytes(), b"partial\xe2")

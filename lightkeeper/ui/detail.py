@@ -311,6 +311,8 @@ class PRDetail(Screen):
         status = [("state", state), ("why", needs_you or row.why or "none"), ("next step", next_step), ("CI", counts)]
         if reviewers is not None:
             status.append(("reviewers", ", ".join(reviewers) or "none"))
+        if detail and detail.opened is not None and detail.offered is not None:
+            status.append(("material", f"opened {detail.opened} of {detail.offered} files"))
         if detail and detail.latest_model_note:
             status.append(("note from the model", detail.latest_model_note))
         closed = next((e for e in reversed(events) if e.state in ("closed", "merged")), None)
@@ -453,7 +455,8 @@ class PRDetail(Screen):
         def read():
             path = session_path(state_dir, session)
             parts = []
-            for name in ("prompt.md", "stdout.json"):
+            raw_name = "stream.jsonl" if path and (path / "stream.jsonl").exists() else "stdout.json"
+            for name in ("prompt.md", raw_name):
                 value = "unavailable"
                 if path:
                     candidate = session_path(state_dir, str(path / name))
