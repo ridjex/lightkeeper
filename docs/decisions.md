@@ -88,3 +88,5 @@ belongs in its commit and pull request.
   base of that comparison, so a new earlier success re-opens the gate; the prompt frame itself is unchanged.
 - 2026-11-10 · **A gate the model leaves is the owner's to know about:** a deployment gate waits for a person, so
   a model `ignore` raises the same alert as a code-raised condition; eligibility ignores stay silent.
+- 2026-11-11 · **A removed file is visible without its patch:** the "patch not visible" floor exists for content the
+  model could not read; a removal has none, and the first oversized request reviewed was refused only for deleted binaries.

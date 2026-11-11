@@ -75,7 +75,7 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   A turn/budget limit, or a timeout after any tool call, is `unclear` too: settled for that input, journaled,
   alerted and notified for PRs and deployments, with the bound and opened/offered file counts. A timeout
   before any tool call remains a transport failure and retries under the normal model pause policy.
-- PR `approve` floors: bot author, failed check, patch omitted by GitHub, incomplete file list →
+- PR `approve` floors: bot author, failed check, patch omitted by GitHub (except for a removed file), incomplete file list →
   `nothing` + notification. A denied tool call refuses approval for both PRs and deployments, with the
   first denial in the private reason, journal and notification. Unopened patches are the model's judgement.
   Fresh PR floors are checked again before posting; other verdicts are unaffected by denied calls.

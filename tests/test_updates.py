@@ -22,11 +22,11 @@ class UpdateTests(TestCase):
         self.root = Path(directory.name)
         self.now = 100000
         self.gh = Mock()
-        self.gh.json.return_value = {'tag_name': 'v0.2.0'}
+        self.gh.json.return_value = {'tag_name': 'v99.0.0'}
         self.checker = UpdateChecker(self.root, self.gh, lambda: self.now)
 
     def test_numeric_tags_and_zero_padding(self):
-        for tag, current, expected in [('v0.2.0', '0.1.0', True), ('1.10', 'v1.9', True),
+        for tag, current, expected in [('v99.0.0', '0.1.0', True), ('1.10', 'v1.9', True),
                                        ('1.2', '1.2.0', False), ('1.2.0.1', '1.2', True),
                                        ('0.1.0', '0.1.0', False), ('0.0.9', '0.1.0', False)]:
             self.assertEqual(newer(tag, current), expected)
@@ -68,13 +68,13 @@ class UpdateTests(TestCase):
         self.assertFalse(runner._in_tick)
 
     def test_throttle_survives_restart_and_expires_at_24_hours(self):
-        self.assertIn('update 0.2.0 available', self.checker.check())
+        self.assertIn('update 99.0.0 available', self.checker.check())
         self.gh.json.assert_called_once_with(['api', f'repos/{UPDATE_REPO}/releases/latest'], timeout_s=10)
         record = json.loads((self.root / 'updates.json').read_text())
-        self.assertEqual(record, {'checked_at': self.now, 'latest_tag': 'v0.2.0'})
+        self.assertEqual(record, {'checked_at': self.now, 'latest_tag': 'v99.0.0'})
         self.now += CHECK_INTERVAL - 1
         restarted = UpdateChecker(self.root, self.gh, lambda: self.now)
-        self.assertIn('update 0.2.0 available', restarted.check())
+        self.assertIn('update 99.0.0 available', restarted.check())
         self.assertEqual(self.gh.json.call_count, 1)
         self.now += 1
         restarted.check()
@@ -107,11 +107,11 @@ class UpdateTests(TestCase):
     def test_corrupt_cache_and_unwritable_cache_do_not_escape(self):
         (self.root / 'updates.json').write_text('not json')
         with self.assertLogs('lightkeeper', level='DEBUG'):
-            self.assertIn('update 0.2.0 available', self.checker.check())
-        self.assertEqual(self.checker.available, '0.2.0')
+            self.assertIn('update 99.0.0 available', self.checker.check())
+        self.assertEqual(self.checker.available, '99.0.0')
         with patch('lightkeeper.updates.os.replace', side_effect=OSError('read only')), \
              self.assertLogs('lightkeeper', level='DEBUG'):
-            self.assertIn('update 0.2.0 available', self.checker.check(force=True))
+            self.assertIn('update 99.0.0 available', self.checker.check(force=True))
         self.assertEqual(list(self.root.glob('.updates-*')), [])
 
     def test_runner_tick_and_command_check_off_ui_thread_without_journal_or_notice(self):
@@ -121,7 +121,7 @@ class UpdateTests(TestCase):
                             observer=observer, notifier=notifier)
         self.gh.login.return_value = settings.login
         thread_names = []
-        self.gh.json.side_effect = lambda args, **kwargs: thread_names.append(threading.current_thread().name) or {'tag_name': 'v0.2.0'}
+        self.gh.json.side_effect = lambda args, **kwargs: thread_names.append(threading.current_thread().name) or {'tag_name': 'v99.0.0'}
         with patch.object(runner, '_tick', return_value={}), patch.object(runner, '_probe_engine'), \
              patch.object(cli, 'log') as log:
             worker = threading.Thread(target=runner.tick, name='runner')
@@ -134,7 +134,7 @@ class UpdateTests(TestCase):
             reminders = [call for call in log.call_args_list if str(call.args[0]).startswith('update ')]
             self.assertEqual(len(reminders), 1)
         self.assertEqual(thread_names, ['runner', 'runner'])
-        observer.assert_any_call('policy', update_version='0.2.0')
+        observer.assert_any_call('policy', update_version='99.0.0')
         self.assertFalse(runner.journal.path.exists())
         notifier.assert_not_called()
         from lightkeeper.settings import save_settings, settings_digest

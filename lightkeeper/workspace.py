@@ -35,7 +35,7 @@ class Workspace:
         for number, file in enumerate(files, 1):
             name = f"diff/{number:04d}.patch"
             patch = (file.patch if file.patch is not None else
-                     "(no patch: empty file or pure rename)" if file.is_complete else
+                     "(no patch: removed file, empty file or pure rename)" if file.is_complete else
                      "(patch omitted by GitHub: binary or too large)")
             self.put(prefix + name, f"path: {escape(file.path)}\n{patch}")
             rows.append("\t".join(map(str, (number, escape(file.status), file.additions, file.deletions,

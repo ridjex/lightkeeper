@@ -50,7 +50,7 @@ class EligibilityTests(unittest.TestCase):
         for status, sha, complete in (
             ("added", "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", True),
             ("removed", "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", True),
-            ("added", "b" * 40, False), ("removed", "b" * 40, False),
+            ("added", "b" * 40, False), ("removed", "b" * 40, True),
             ("modified", "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", False),
             ("modified", None, False), ("renamed", None, True), ("copied", None, True),
         ):

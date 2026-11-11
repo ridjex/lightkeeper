@@ -4,6 +4,13 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-11
+
+### Fixed
+
+- A removed file whose patch GitHub omits (binary or large) no longer refuses an approval: the removal is
+  the whole change and its path is listed. Added or modified files without a patch still refuse it.
+
 ## [0.2.0] — 2026-11-11
 
 ### Changed

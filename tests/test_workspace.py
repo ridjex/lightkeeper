@@ -184,7 +184,7 @@ class StreamTests(unittest.TestCase):
         material = Workspace()
         material.changes((make_file("pkg/__init__.py", 0, 0, status="added", patch=None,
                                     sha="e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"),))
-        self.assertEqual(material.files["diff/0001.patch"].splitlines()[1], "(no patch: empty file or pure rename)")
+        self.assertEqual(material.files["diff/0001.patch"].splitlines()[1], "(no patch: removed file, empty file or pure rename)")
 
     def test_bounds_report_opened_and_offered(self):
         for bound, expected in (("max_turns", "60-turn"), ("budget", "$5 budget")):

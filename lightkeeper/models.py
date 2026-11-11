@@ -71,9 +71,9 @@ class ChangedFile:
 
     @property
     def is_complete(self) -> bool:
-        """True when the change is visible, including empty blobs and pure renames without a patch."""
-        if self.patch is not None:
-            return True
+        """True when the change is visible, including removed files, empty blobs and pure renames without a patch."""
+        if self.patch is not None or self.status == "removed":
+            return True  # A removal is the whole change: its path and line count are listed, there is nothing to read.
         if self.sha == "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" and self.status in ("added", "removed"):
             return True  # Git's empty blob: nothing to read. A file emptied by a modification keeps its patch.
         return self.status in ("renamed", "copied") and self.additions + self.deletions == 0
