@@ -83,6 +83,7 @@ belongs in its commit and pull request.
 - 2026-11-03 · **Render the already-sized idle rows directly:** preserve literal Rich Text, repaint changed rows without layout, and compare timed text before invalidating widgets; guard the whole color frame including Textual and serialization at 5 ms in the opt-in synthetic benchmark.
 - 2026-11-10 · **Team review requests count:** most of a team's review asks go to a team or a CODEOWNERS group, not to one
   person, so discovery uses `review-requested:` (personal and team) and relies on the watched-repository list to bound it.
+- 2026-11-17 · **The search is the proof of team membership:** a pull request with a team on the request and no personal request is eligible only while `review-requested:` lists it; no team-membership call (it needs an extra token scope), and a failed search makes it wait a tick.
 - 2026-11-09 · **Deployment notifications are wake signals, not run identities:** GitHub sends them without a run URL, so a fresh request lists the repository's waiting runs once; pending gates are the truth.
 - 2026-11-10 · **A deployment is judged by what changed since the last success:** the gate fingerprint carries the
   base of that comparison, so a new earlier success re-opens the gate; the prompt frame itself is unchanged.

@@ -213,6 +213,7 @@ class Runner:
         self.observer = observer or (lambda event, **fields: None)
         self.live_lock_held = live_lock_held
         self._identity_reason = None
+        self._searched: frozenset = frozenset()             # pull requests the last search listed as requested
         self._identity_checked = False
         self._identity_failures = 0
         self._last_gh_login = None
@@ -427,7 +428,7 @@ class Runner:
             return "refused: closed"
         if pr.head_sha != command.head:
             return "refused: head changed"
-        protection = evaluate_pr(pr, self.settings)
+        protection = evaluate_pr(pr, self.settings, self._team_requested(pr))
         if protection.outcome in ("satisfied", "ignore"):
             return f"refused: {protection.reason}"
         self._journal("pr", key, "reopen", reason="re-review queued", title=pr.title, author=pr.author)
@@ -659,7 +660,7 @@ class Runner:
             self._journal("pr", key, "ignore", reason="taken over by you", protected=True,
                           source="eligibility", fingerprint=pr.fingerprint)
             return "ignore"
-        decision = evaluate_pr(pr, self.settings)
+        decision = evaluate_pr(pr, self.settings, self._team_requested(pr))
         if decision.outcome == "review":
             decision = self._stored_decision(key, pr.fingerprint) or self._ask_about_pr(pr)
         if self.cancelled:
@@ -804,7 +805,7 @@ class Runner:
             self._publish_pr_status(PRStatus.from_pr(fresh))
             if fresh.head_sha != pr.head_sha:
                 return {"defer": "head moved during assessment"}
-            again = evaluate_pr(fresh, self.settings)
+            again = evaluate_pr(fresh, self.settings, self._team_requested(fresh))
             if again.outcome == "satisfied":
                 return {"satisfied": again.reason}
             if fresh.fingerprint != pr.fingerprint:
@@ -1377,6 +1378,11 @@ class Runner:
         self._wake_reason = ""
         return counts
 
+    def _team_requested(self, pr) -> bool:
+        """The search matches the owner or one of their teams; with a team on the request and no personal
+        request, it was a team. A failed search leaves this false, so the pull request waits one tick."""
+        return bool(pr.requested_teams) and (pr.repo, pr.number) in self._searched
+
     def _tick(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         self._default_branch = {}
@@ -1397,6 +1403,7 @@ class Runner:
             log(f"search: error, watched pull requests still run ({exc})")
             count("error")
             found = []
+        self._searched = frozenset(found)
         todo_prs = sorted(set(found) | set(self.journal.watched_prs()))
         todo_prs = [(repo, number) for repo, number in todo_prs if self._in_scope(repo)]
         for index, (repo, number) in enumerate(todo_prs, 1):

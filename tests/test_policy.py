@@ -105,6 +105,11 @@ class EligibilityTests(unittest.TestCase):
                          "review")                                                   # GitHub dropped the request after our review
         d = evaluate_pr(make_pr(requested_users=("bob",)), self.policy)
         self.assertEqual((d.outcome, d.reason), ("defer", "no longer requested"))   # removed before any review; re-request resumes
+
+    def test_request_through_a_team_is_reviewed(self):
+        team_only = make_pr(requested_users=(), requested_teams=("org/maintainers",))
+        self.assertEqual(evaluate_pr(team_only, self.policy).reason, "no longer requested")   # not confirmed by the search
+        self.assertEqual(evaluate_pr(team_only, self.policy, True).outcome, "review")
         self.assertEqual(self.outcome(make_pr(reviews=(Review("me", "COMMENTED", "0" * 40, body="hm?"),))), "ignore")  # any manual review = takeover
 
     def test_approve_floor(self):

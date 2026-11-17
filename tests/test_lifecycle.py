@@ -446,6 +446,14 @@ class PullRequestLifecycle(LifecycleBase):
         self.gh.search_results = []
         self.assertEqual(r.tick(), {"applied": 1})
 
+    def test_request_through_a_team_is_reviewed_while_the_search_lists_it(self):
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(requested_users=(), requested_teams=("org/maintainers",))]
+        r = self.runner(reviewer=FakeReviewer([APPROVE]))
+        self.gh.search_results = []                                # the team request is not the owner's team
+        self.assertEqual(r.process_pr("org/repo", 7), "defer")
+        self.gh.search_results = [("org/repo", 7)]
+        self.assertEqual(r.tick(), {"applied": 1})
+
     def test_unclear_answer_is_settled_with_notification(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
         reviewer = FakeReviewer([UnclearAnswer("not in contract", Path("/s/1")), APPROVE])

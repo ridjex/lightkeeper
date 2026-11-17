@@ -87,10 +87,11 @@ def load_policy(path: str | Path) -> Policy:
     return parse_policy(raw, path.parent, rules_text)
 
 
-def evaluate_pr(pr: PullRequest, policy) -> Decision:
+def evaluate_pr(pr: PullRequest, policy, team_requested: bool = False) -> Decision:
     """Code-owned eligibility (design §4). Returns `review` when the model should look at the pull request.
     A PR stays watched from the first review request until it is closed, so being removed from the
-    requested reviewers (which GitHub does after every submitted review) does not end the evaluation."""
+    requested reviewers (which GitHub does after every submitted review) does not end the evaluation.
+    `team_requested`: GitHub's search currently lists this pull request as requested from the owner through a team."""
     login = policy.login
     if pr.repo not in policy.repos:
         return Decision("ignore", "repository not in repos", "eligibility")
@@ -107,7 +108,7 @@ def evaluate_pr(pr: PullRequest, policy) -> Decision:
         return Decision("ignore", "the owner has an unsubmitted review open", "eligibility")
     if any(r.state == "DISMISSED" and r.commit_sha == pr.head_sha and is_automated(r.body) for r in mine):
         return Decision("ignore", "automated review was dismissed on this head", "eligibility")
-    if not mine and login not in pr.requested_users:
+    if not mine and login not in pr.requested_users and not team_requested:
         return Decision("defer", "no longer requested", "readiness")     # removed before any review; a re-request resumes
     if pr.is_draft:
         return Decision("defer", "draft", "readiness")          # becomes eligible when marked ready

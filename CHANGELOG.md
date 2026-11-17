@@ -4,6 +4,14 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-11-17
+
+### Fixed
+
+- A pull request requested only through a team you belong to is now reviewed. Since 0.1.13 such requests
+  were found by the search and then deferred as "no longer requested", because eligibility looked only at
+  personally requested reviewers.
+
 ## [0.2.1] — 2026-11-11
 
 ### Fixed
