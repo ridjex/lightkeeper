@@ -164,9 +164,10 @@ class PullRequest:
         """Identity of everything an assessment looked at. A base retarget changes the diff without moving the
         head SHA, so the head alone is not enough to know that a write still targets what was assessed.
         Other people's reviews count (a teammate's "changes requested" must invalidate an approval in flight);
-        the tool's own reviews and issue comments do not (bots edit comments constantly)."""
+        the tool's own reviews and issue comments do not (bots edit comments constantly). Whether a failed check
+        is required counts, because it decides the approval floor; the flag of any other check does not."""
         payload = [self.base_ref, self.head_sha, self.title, self.body, self.is_draft,
-                   [[c.name, c.status, c.conclusion, c.details_url] for c in self.checks],
+                   [[c.name, c.status, c.conclusion, c.details_url, c.failed and c.required] for c in self.checks],
                    [[r.author, r.state, r.commit_sha, r.body] for r in self.reviews if not is_automated(r.body)],
                    [[f.path, f.previous_path, f.status, f.additions, f.deletions, f.patch] for f in self.files]]
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]

@@ -4,6 +4,24 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-11-17
+
+### Changed
+
+- Only a failed check that GitHub **requires** for the pull request refuses an approval in code. A failed
+  optional check is now judged by your rules: the packaged rules approve only when its log shows the
+  check itself is broken, and withhold approval when the change is at fault or the log proves neither.
+  In a repository that requires no checks, no failed check is a code floor any more. An existing
+  `rules.md` is never rewritten by an update: it still says "a failed check is never approved" until you
+  edit it (compare with the packaged template). Outcomes on open pull requests are judged again once.
+
+### Fixed
+
+- A check GitHub reports as required only in the required-check lookup, and not yet in the check list,
+  now counts as pending instead of being missed.
+- A failed check wrongly treated as required while the required-check lookup was failing no longer
+  leaves the pull request settled without an approval after the lookup recovers.
+
 ## [0.2.2] — 2026-11-17
 
 ### Fixed

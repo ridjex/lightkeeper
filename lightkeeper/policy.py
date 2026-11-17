@@ -127,7 +127,9 @@ def approve_floor(pr: PullRequest) -> str | None:
         return f"file list incomplete: {len(pr.files)} of {pr.changed_files}"
     if pr.author_is_bot or pr.author.endswith("[bot]"):
         return "bot author"
-    failed = [c.name for c in pr.checks if c.failed]
+    # Only checks GitHub requires for this pull request: an optional check that fails is the model's to judge
+    # by the owner's rules. When the required-check lookup failed, every check is marked required.
+    failed = [c.name for c in pr.checks if c.failed and c.required]
     if failed:
         return f"failed check: {failed[0]}"
     missing = [f.path for f in pr.files if not f.is_complete]

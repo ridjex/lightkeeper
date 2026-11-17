@@ -116,7 +116,8 @@ and start it again. Configuration, journal and sessions are never touched by an 
 Every minute: for each repository in your `settings.toml`, find the open pull requests where you are a
 requested reviewer, plus the ones the tool already watches. Drafts wait; checks that GitHub requires for
 the pull request wait. Optional checks are shown to the model as running or not required and never block
-review, except that a failed check of any kind still blocks an approve. Re-runs of a check count once
+review. A failed check GitHub requires blocks an approve in code; a failed optional check is judged by
+your rules (the packaged rules approve only when its log shows the check itself is broken, not the change). Re-runs of a check count once
 per workflow and job name (commit statuses use their context). Active reruns supersede completed runs;
 otherwise the latest timestamp wins, with list order breaking ties or missing dates. For the rest,
 the script writes the complete description, diff, checks, earlier comments and reviews, collected failed
@@ -165,7 +166,7 @@ An empty file counts as visible: its empty Git blob has nothing to read, even wi
   no shell, network or GitHub token. It only proposes. The script posts after re-fetching the pull request
   and finding the same head, description, checks, files and teammates' reviews it assessed. Approvals are bound to that commit
   (`commit_id`). One review per head and action: a crash after posting never posts twice.
-- An `approve` cannot cross the code's floors: a bot author, a failed check, a file whose patch GitHub
+- An `approve` cannot cross the code's floors: a bot author, a failed check GitHub requires, a file whose patch GitHub
   omitted, an incomplete file list, or a denied file-tool call. Denied calls also block deployment approvals.
   Incomplete lists still reach the model. A patch the model chose not to open is its judgement, not a floor.
   An empty file (identified by its empty Git blob) counts as visible, including when removed.

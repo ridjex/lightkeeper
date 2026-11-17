@@ -22,10 +22,13 @@ class ChangedFileTests(unittest.TestCase):
         self.assertTrue(f.is_complete)
 
 class PullRequestTests(unittest.TestCase):
-    def test_fingerprint_ignores_required_flag(self):
+    def test_fingerprint_counts_the_required_flag_only_of_a_failed_check(self):
         check = Check("unit", "in_progress", "")
         pr = replace(_pr([]), checks=(check,))
         self.assertEqual(pr.fingerprint, replace(pr, checks=(replace(check, required=True),)).fingerprint)
+        failed = Check("scan", "completed", "failure")             # it decides the approval floor
+        pr = replace(_pr([]), checks=(failed,))
+        self.assertNotEqual(pr.fingerprint, replace(pr, checks=(replace(failed, required=True),)).fingerprint)
 
     def test_fingerprint_counts_others_reviews_and_check_links_but_not_own_reviews(self):
         base = _pr([ChangedFile("a.py", None, "modified", 1, 1, "@@")])

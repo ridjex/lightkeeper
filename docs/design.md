@@ -59,10 +59,11 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   the owner's own manual review (approve/request changes without the marker) → `ignore` (human took over);
   dismissed automated review on this head → `ignore`; draft → `defer`; checks GitHub requires for this PR
   still running → `defer` (after 3 h one notification, still no approval). Optional checks are shown to the model as running or
-  not required and do not defer review; any failed check, including optional ones, still blocks approve.
+  not required and do not defer review; a failed required check blocks approve, a failed optional one is the
+  model's to judge by the rules (a failed lookup marks every check required).
   Required flags and base-branch declarations come from one extra GraphQL query per full fetch with a PR
   node ID. Missing declared contexts become pending checks; failed lookups use the old all-checks gate
-  and log once per repository, PR and head. Required flags are excluded from the fingerprint.
+  and log once per repository, PR and head. Required flags are excluded from the fingerprint, except that of a failed check (it decides the floor).
   An incomplete file list reaches the model with its fetched/expected counts. Missing patches (binary or
   too large) are marked in the overview and on disk.
 - Deployment: `approval_requested` WorkflowRun notifications name the repository and update time;
@@ -75,7 +76,7 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   A turn/budget limit, or a timeout after any tool call, is `unclear` too: settled for that input, journaled,
   alerted and notified for PRs and deployments, with the bound and opened/offered file counts. A timeout
   before any tool call remains a transport failure and retries under the normal model pause policy.
-- PR `approve` floors: bot author, failed check, patch omitted by GitHub (except for a removed file), incomplete file list →
+- PR `approve` floors: bot author, failed required check, patch omitted by GitHub (except for a removed file), incomplete file list →
   `nothing` + notification. A denied tool call refuses approval for both PRs and deployments, with the
   first denial in the private reason, journal and notification. Unopened patches are the model's judgement.
   Fresh PR floors are checked again before posting; other verdicts are unaffected by denied calls.

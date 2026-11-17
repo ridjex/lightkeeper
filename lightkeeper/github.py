@@ -262,7 +262,8 @@ def parse_pull_request(repo: str, view: dict, files: list[dict], reviews: list[d
             checks.append(Check(name, (c.get("status") or "").lower(), (c.get("conclusion") or "").lower(),
                                 url, required))
     reported = {c.name for c in checks}
-    for name in dict.fromkeys(declared_checks or ()):
+    flagged = [name for name, flag in (required_checks or {}).items() if flag]     # required, seen only by the lookup
+    for name in dict.fromkeys([*(declared_checks or ()), *flagged]):
         if name not in reported:
             checks.append(Check(name, "pending", "", "", required=True, reported=False))
     comments = tuple(Comment((c.get("author") or {}).get("login", ""), c.get("body") or "")

@@ -214,6 +214,13 @@ class ParseTests(unittest.TestCase):
         self.assertTrue(all(c.reported for c in pr.checks[:-1]))
         self.assertEqual(pr.checks[-1], Check("external", "pending", "", "", required=True, reported=False))
 
+    def test_check_flagged_required_only_by_the_lookup_is_pending(self):
+        from lightkeeper.models import Check
+        view = load("pr_view.json")                                # the lookup ran later and saw one more check
+        pr = parse_pull_request("org/repo", view, [], [], {"late": True, "late-optional": False}, [])
+        self.assertEqual(pr.checks[-1], Check("late", "pending", "", "", required=True, reported=False))
+        self.assertNotIn("late-optional", [c.name for c in pr.checks])
+
     def test_declared_contexts_wait_with_null_rollup(self):
         view = load("pr_view.json")
         view["statusCheckRollup"] = None

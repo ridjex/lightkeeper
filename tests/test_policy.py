@@ -116,9 +116,9 @@ class EligibilityTests(unittest.TestCase):
         self.assertIsNone(approve_floor(make_pr()))
         self.assertEqual(approve_floor(make_pr(author="renovate[bot]")), "bot author")
         self.assertEqual(approve_floor(make_pr(author_is_bot=True)), "bot author")
-        self.assertEqual(approve_floor(make_pr(checks=(Check("sast", "completed", "failure"),))), "failed check: sast")
+        self.assertEqual(approve_floor(make_pr(checks=(Check("sast", "completed", "failure", required=True),))), "failed check: sast")
         self.assertEqual(approve_floor(make_pr(checks=(Check("lint", "completed", "skipped"),))), None)
-        self.assertEqual(approve_floor(make_pr(checks=(Check("ci/legacy", "completed", "error"),))), "failed check: ci/legacy")
+        self.assertEqual(approve_floor(make_pr(checks=(Check("ci/legacy", "completed", "error", required=True),))), "failed check: ci/legacy")
         self.assertEqual(approve_floor(make_pr(files=(make_file("logo.png", 0, 0, status="added", patch=None),))),
                          "patch not visible: logo.png")
 
@@ -136,10 +136,12 @@ class EligibilityTests(unittest.TestCase):
         decision = evaluate_pr(make_pr(checks=checks), self.policy)
         self.assertEqual((decision.outcome, decision.reason), ("defer", "checks still running: unit, legacy"))
 
-    def test_optional_failed_check_still_blocks_approve(self):
+    def test_only_a_required_failed_check_refuses_an_approval(self):
         pr = make_pr(checks=(Check("optional", "completed", "failure", required=False),))
         self.assertEqual(self.outcome(pr), "review")
-        self.assertEqual(approve_floor(pr), "failed check: optional")
+        self.assertIsNone(approve_floor(pr))                       # the model judges it by the owner's rules
+        both = make_pr(checks=(Check("optional", "completed", "failure"), Check("unit", "completed", "failure", required=True)))
+        self.assertEqual(approve_floor(both), "failed check: unit")
 
     def test_file_list_must_match_github_count(self):
         self.assertEqual(self.outcome(make_pr(changed_files=1)), "review")

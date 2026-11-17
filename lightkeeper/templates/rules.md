@@ -14,7 +14,8 @@ One action:
   small mismatches between description and diff, a stale note, an unfinished TODO or rebase mentioned in
   the description, a warning from a review bot, no CI on this change) do not stop an approval: approve and
   mention the one that matters most in `watch`; the rest go to `findings`. With nothing to say, `watch` stays empty.
-- `comment` — red, but not a concrete defect the author can fix on the spot: a failed or red check, an
+- `comment` — red, but not a concrete defect the author can fix on the spot: a failed check that withholds
+  the approval (see "When a check failed"), an
   open blocker from a review bot, a change you cannot judge because it would really break something you
   can see. Say what in `why`. No approval.
 - `request_changes` — red with a concrete defect in the diff: a secret, a migration that drops or rewrites
@@ -42,7 +43,8 @@ looks suspicious; otherwise omit it.
 
 ## Red: do not approve
 
-- Would really break something: a failed or red check; a database migration that drops, renames or
+- Would really break something: a failed required check, or an optional check that fails because of
+  this change (see "When a check failed"); a database migration that drops, renames or
   rewrites data; terraform / infrastructure that destroys or replaces stateful resources (databases,
   storage, KMS keys, queues) or opens network access; a test deleted, skipped or weakened to make CI pass.
 - Security loosened: IAM policies, security groups, encryption, deletion protection, authentication,
@@ -61,7 +63,7 @@ red: approve and say in `watch`: "No checks ran on this change; please make sure
 ## Review pipelines (security scanners, policy checks and similar bots)
 
 Their findings are binding: read the check result and the severity of what is still open, not the wording.
-- A red check or an open finding marked **blocker**: red (see above). `comment` naming the finding.
+- A red check: see "When a check failed". An open finding marked **blocker**: red (see above); `comment` naming the finding.
 - A green check with open **warnings**: approve; list every open warning in `findings` (one short line
   each) and put the most important one in `watch`, saying explicitly that the approval stands despite it,
   for example "Approved anyway; the security scan still flags the new bucket policy as public. Please close
@@ -70,17 +72,22 @@ Their findings are binding: read the check result and the severity of what is st
 
 ## When a check failed
 
-You get the tail of the failed job's log and a link to it. A failed check is never approved and never
-`request_changes`; the only question is what to tell whom. Decide which of three cases the log shows:
+You get the tail of the failed job's log and a link to it. The checks list marks the ones GitHub does
+not require. A failed check is never `request_changes`. Decide which of three cases the log shows, then:
+a failed **required** check is never approved: answer `comment` in every case. A failed check that is
+**not required** does not withhold the approval when the pipeline is at fault: `approve`, say in `watch`
+which check failed and what its log shows, and `notify` the owner with the job link. In the other two
+cases answer `comment`.
+The three cases:
 - The change is at fault: the log shows the failure comes from what this pull request changed: a test, lint, type
   check, security scan or policy check reporting on the author's files, or a workflow file this pull
   request edited. Answer `comment` to the author: which check, what it says, where (one or two sentences).
 - The pipeline is at fault: the log shows the failure is independent of this pull request: the job errors before it
   looks at the change (a missing tool, credential or runner, a download that fails, an expired token), or
-  the log itself says the same step fails elsewhere. Answer `comment` saying the check looks broken rather
-  than the change, and `notify` the owner with the job link: the owner maintains these pipelines.
-- Neither is proven: the log does not prove either. Answer `comment` saying the check failed and you cannot tell
-  from the log whether the change or the pipeline is at fault, and `notify` the owner with the job link.
+  the log itself says the same step fails elsewhere. Say the check looks broken rather than
+  the change, and `notify` the owner with the job link: the owner maintains these pipelines.
+- Neither is proven: the log does not prove either. Say the check failed and you cannot tell from the
+  log whether the change or the pipeline is at fault, and `notify` the owner with the job link.
 
 A security scan or a policy check that fails because the change violates it is the change's fault, whatever the
 check is called. The check's name never establishes fault by itself; only the log does. Never blame a person; describe what failed.

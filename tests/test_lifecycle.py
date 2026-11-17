@@ -454,6 +454,15 @@ class PullRequestLifecycle(LifecycleBase):
         self.gh.search_results = [("org/repo", 7)]
         self.assertEqual(r.tick(), {"applied": 1})
 
+    def test_optional_failed_check_is_approved_once_the_required_lookup_recovers(self):
+        blind = make_pr(checks=(Check("scan", "completed", "failure", required=True),))     # lookup failed: all required
+        self.gh.pr_snapshots[("org/repo", 7)] = [blind]
+        r = self.runner(reviewer=FakeReviewer([APPROVE, APPROVE]))
+        self.assertEqual(r.process_pr("org/repo", 7), "nothing")
+        self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(checks=(Check("scan", "completed", "failure"),))]
+        self.assertEqual(r.process_pr("org/repo", 7), "applied")
+        self.assertEqual([w[4] for w in self.gh.writes], ["approve"])
+
     def test_unclear_answer_is_settled_with_notification(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr()]
         reviewer = FakeReviewer([UnclearAnswer("not in contract", Path("/s/1")), APPROVE])
@@ -647,7 +656,7 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertIn(("pr", "org/private", 2), r.quarantined)
 
     def test_approve_floor_overrides_a_talked_into_model(self):
-        failing = make_pr(checks=(Check("sast", "completed", "failure", "https://x/actions/runs/1/job/9"),))
+        failing = make_pr(checks=(Check("sast", "completed", "failure", "https://x/actions/runs/1/job/9", required=True),))
         self.gh.pr_snapshots[("org/repo", 7)] = [failing]
         r = self.runner(reviewer=FakeReviewer([APPROVE]))
         self.assertEqual(r.process_pr("org/repo", 7), "nothing")

@@ -163,7 +163,7 @@ class OwnerRunnerTests(OwnerFixture, TestCase):
         self.assertFalse(self.gh.writes)
 
     def test_floor_requires_note_and_other_eligibility_does_not_apply(self):
-        cases = [dict(author_is_bot=True), dict(checks=(Check('unit', 'completed', 'failure'),)),
+        cases = [dict(author_is_bot=True), dict(checks=(Check('unit', 'completed', 'failure', required=True),)),
                  dict(files=(make_file(patch=None),))]
         for changes in cases:
             with self.subTest(changes=changes):
@@ -517,7 +517,7 @@ class OwnerModalTests(OwnerFixture, IsolatedAsyncioTestCase):
         self.record('seen', title='Synthetic PR', author='contributor')
         self.record('assessment', action='request_changes', reason='PRIVATE REASON', summary='Public summary')
         if floor:
-            self.pr = replace(self.pr, checks=(Check('unit', 'completed', 'failure'),))
+            self.pr = replace(self.pr, checks=(Check('unit', 'completed', 'failure', required=True),))
             self.gh.pr_snapshots[self.key[:2]] = [self.pr]
         self.runner._publish_pr_status(PRStatus.from_pr(self.pr))
         worker = Mock(runner=self.runner, poll_join=Mock(return_value=False))
@@ -619,7 +619,7 @@ class OwnerModalTests(OwnerFixture, IsolatedAsyncioTestCase):
         app = self.app()
         async with app.run_test(size=(110, 45)) as pilot:
             await pilot.press('enter')
-            failed = replace(self.pr, checks=(Check('unit', 'completed', 'failure'),))
+            failed = replace(self.pr, checks=(Check('unit', 'completed', 'failure', required=True),))
             self.runner._publish_pr_status(PRStatus.from_pr(failed))
             await pilot.press('A')
             modal = app.screen
