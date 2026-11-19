@@ -487,6 +487,10 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(r.process_pr("org/repo", 7), "defer")
         self.assertEqual(self.notified, ["org/repo#7: checks still running after 3 h; open it and decide"])
+        key = ("org/repo", 7, HEAD)
+        self.assertTrue(self.journal.was_notified(key, "ci-wait"))
+        self.journal.append(kind="pr", key=key, event="assessment", mode="live", policy="abcdef", action="comment")
+        self.assertFalse(self.journal.was_notified(key, "ci-wait"))             # a later stuck re-run alerts again
 
     def test_unreported_required_context_defers_while_optional_check_runs(self):
         from lightkeeper.__main__ import CI_WAIT_MAX_S

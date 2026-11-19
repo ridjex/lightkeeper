@@ -160,6 +160,11 @@ class ProjectionTests(unittest.TestCase):
         self.feed('notify', text='inspect this')
         self.feed('seen', key=['example/widget', 1, 'new-head'])
         self.assertFalse(self.p.screen(self.runtime, NOW).alerts)
+        for text, left in (('checks still running after 3 h; open it and decide', 0), ('inspect this', 1)):
+            self.p = Projection()
+            self.feed('notify', text=text)
+            self.feed('applied', action='comment')                 # the checks finished; another alert stays
+            self.assertEqual(len(self.p.screen(self.runtime, NOW).alerts), left)
 
     def test_since_repeats_rules_and_bounded_history(self):
         self.p = Projection(history_limit=2)

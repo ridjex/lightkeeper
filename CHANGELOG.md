@@ -4,6 +4,15 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-11-19
+
+### Fixed
+
+- `A` (approve as owner) works on a head whose earlier approval GitHub shows as dismissed, for example
+  after the base branch of a stacked pull request changed. Before, it answered "already approved by you".
+- The "checks still running after 3 h" alert clears once a review of that head is posted, and a later
+  re-run of the checks that gets stuck raises it again.
+
 ## [0.2.3] — 2026-11-17
 
 ### Changed

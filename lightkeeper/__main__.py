@@ -349,8 +349,7 @@ class Runner:
             return f"refused: {reason}"
         if self.journal.is_unknown(key):
             return "refused: unknown write"
-        if self.journal.is_final(key, "", "owner_approve", None):
-            return "already approved by you"
+        recorded = self.journal.is_final(key, "", "owner_approve", None)
         try:
             pr = self.gh.pull_request(repo, key[1])
         except Exception as exc:
@@ -363,6 +362,9 @@ class Runner:
         if pr.author == self.settings.login:
             return "refused: own pull request"
         mine = [r for r in pr.reviews if r.author == self.settings.login]
+        # A recorded approval that GitHub shows as dismissed no longer approves anything: the owner may approve again.
+        if recorded and not any(r.state == "DISMISSED" and r.commit_sha == command.head for r in mine):
+            return "already approved by you"
         if any(r.state == "PENDING" for r in mine):
             return "refused: the owner has an unsubmitted review open"
         manual = next((r for r in reversed(mine) if r.state == "APPROVED" and r.commit_sha == command.head

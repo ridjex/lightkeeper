@@ -125,6 +125,7 @@ class Journal:
             self.components[rec["key"][0]] = rec["components"]
         if ev == "assessment":
             self._assessments[k] = rec
+            self._notified.get(k, set()).discard("ci-wait")     # the wait ended; a later stuck re-run alerts again
         elif ev in ("defer", "withheld"):
             self._retry_assessments.add(k)
         elif ev in SETTLED_EVENTS or ev in ("applied", "satisfied", "owner_approve", "unknown", "closed"):

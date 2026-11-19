@@ -388,6 +388,14 @@ class OwnerRunnerTests(OwnerFixture, TestCase):
                 self.runner.reviewer.review_pr.assert_not_called()
                 self.assertEqual(len(self.gh.writes), int(protection == 'takeover'))
 
+    def test_owner_can_approve_again_after_the_recorded_approval_was_dismissed(self):
+        self.record('applied', action='approve', fingerprint=self.pr.fingerprint)
+        self.assertEqual(self.command().text, 'already approved by you')
+        dismissed = Review('me', 'DISMISSED', HEAD, 'ok\n\n' + marker_line('fake', 'abcdef', HEAD))
+        self.gh.pr_snapshots[self.key[:2]] = [replace(self.pr, reviews=(dismissed,))]
+        self.assertEqual(self.command().text, 'approved by you')
+        self.assertEqual(len(self.gh.writes), 1)
+
     def test_owner_error_does_not_settle_or_erase_protection(self):
         self.gh.fail_write = GhError(['api'], 1, 'HTTP 422: cannot approve')
         self.command()

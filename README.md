@@ -173,7 +173,8 @@ An empty file counts as visible: its empty Git blob has nothing to read, even wi
 - One decision per pull request head (or per run attempt). A push, a check rerun, an edited description
   or edited rules re-open it; your own review, approval or a closed pull request end it.
 - A dismissed automated review on the current head is a veto: one notification, no re-approval, even
-  after an approval was recorded as final. A new head can be evaluated again. An earlier automated
+  after an approval was recorded as final (GitHub also dismisses approvals by itself when a base branch
+  changes; `A` in the detail view approves such a head as owner). A new head can be evaluated again. An earlier automated
   "changes requested" only triggers a block warning if it is still your latest decisive review.
 - A write whose outcome GitHub did not confirm (a 5xx or a transport failure) is `unknown` and checked
   against GitHub on every tick. A review found there settles it. A review still absent ten minutes later

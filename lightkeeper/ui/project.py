@@ -94,6 +94,8 @@ class Projection:
                 shown = "changes"                 # our block on this head still stands; "silent" would hide it
             since = row.since if (row.state, row.dry_run) == (shown, dry) else at
             clear = event in ("satisfied", "owner_approve", "ignore", "closed", "lost") or (event == "applied" and state == "approved")
+            # A posted review of any kind answers "checks still running": the checks have finished.
+            clear = clear or (event == "applied" and (row.needs_you or "").startswith("checks still running after"))
             row = replace(row, state=shown, why=why, since=since, dry_run=dry,
                           needs_you=None if clear else row.needs_you)
             meaningful = owner or (event not in ("defer", "satisfied") and not (event == "applied" and rec.get("source") == "observed"))
