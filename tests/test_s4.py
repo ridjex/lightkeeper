@@ -29,7 +29,7 @@ from lightkeeper.posting import owner_approval_body
 from lightkeeper.ui.model import Runtime
 from lightkeeper.ui.project import Observer, Projection
 from lightkeeper.worker import RunnerThread
-from tests.helpers import FakeGh, FakeReviewer, HEAD, make_file, make_pr, make_settings
+from tests.helpers import FakeGh, FakeReviewer, HEAD, make_pr, make_settings
 
 
 class OwnerFixture:
@@ -164,7 +164,7 @@ class OwnerRunnerTests(OwnerFixture, TestCase):
 
     def test_floor_requires_note_and_other_eligibility_does_not_apply(self):
         cases = [dict(author_is_bot=True), dict(checks=(Check('unit', 'completed', 'failure', required=True),)),
-                 dict(files=(make_file(patch=None),))]
+                 dict(changed_files=2)]
         for changes in cases:
             with self.subTest(changes=changes):
                 self.setUp()

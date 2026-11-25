@@ -147,7 +147,7 @@ The Runner reloads settings and refuses invalid settings or a changed login, a d
 disallowed approve, global/repository dry-run, missing live lock, mismatched/unavailable `gh` identity,
 an unknown write on this head, an unavailable/closed PR, a moved head, your own PR, or your pending review.
 An approval already on this head is reported as `already approved by you` without another POST.
-You can override the approval floor (bot author, failed check, missing patch) with a non-empty note;
+You can override the approval floor (bot author, failed required check, incomplete file list) with a non-empty note;
 both the confirmation and Runner require it. A timeout stays `unknown` until GitHub shows your manual
 approval; the tool does not retry that write. Quitting during the POST waits for its journaled outcome.
 

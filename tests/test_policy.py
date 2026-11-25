@@ -57,8 +57,7 @@ class EligibilityTests(unittest.TestCase):
             with self.subTest(status=status, sha=sha):
                 file = make_file("file", 0, 0, status=status, patch=None, sha=sha)
                 self.assertEqual(file.is_complete, complete)
-                self.assertEqual(approve_floor(make_pr(files=(file,))),
-                                 None if complete else "patch not visible: file")
+                self.assertIsNone(approve_floor(make_pr(files=(file,))))   # marked for the model, never a floor
                 legacy = make_file("file", 0, 0, status=status, patch=None)
                 self.assertEqual(make_pr(files=(file,)).fingerprint, make_pr(files=(legacy,)).fingerprint)
 
@@ -119,8 +118,7 @@ class EligibilityTests(unittest.TestCase):
         self.assertEqual(approve_floor(make_pr(checks=(Check("sast", "completed", "failure", required=True),))), "failed check: sast")
         self.assertEqual(approve_floor(make_pr(checks=(Check("lint", "completed", "skipped"),))), None)
         self.assertEqual(approve_floor(make_pr(checks=(Check("ci/legacy", "completed", "error", required=True),))), "failed check: ci/legacy")
-        self.assertEqual(approve_floor(make_pr(files=(make_file("logo.png", 0, 0, status="added", patch=None),))),
-                         "patch not visible: logo.png")
+        self.assertIsNone(approve_floor(make_pr(files=(make_file("logo.png", 0, 0, status="added", patch=None),))))
 
     def test_required_checks_must_be_finished(self):
         d = evaluate_pr(make_pr(checks=(Check("tests", "in_progress", "", required=True),)), self.policy)

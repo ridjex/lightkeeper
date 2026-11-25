@@ -330,10 +330,13 @@ class PullRequestLifecycle(LifecycleBase):
         self.gh.notifications = [("org/repo", 7, "updated")]
         self.gh.pending_deployments = Mock(return_value=[])
         r = self.runner(reviewer=FakeReviewer([APPROVE]))
-        self.assertEqual(r.tick(), {"quarantined": 1, "applied": 1})
+        self.assertEqual(r.tick(), {"error": 1, "applied": 1})          # one 404 may be GitHub's blip: retry
+        self.assertEqual(r.tick(), {"error": 1, "final": 1})
+        self.assertEqual(r.quarantined, set())
+        self.assertEqual(r.tick(), {"quarantined": 1, "final": 1})      # the third in a row is a real loss
         self.assertEqual(r.tick(), {"final": 1})
         self.assertEqual(r.quarantined, {("pr", "org/repo", 7)})
-        self.assertEqual(sum(c.args == ("org/repo", 7) for c in self.gh.pull_request.call_args_list), 1)
+        self.assertEqual(sum(c.args == ("org/repo", 7) for c in self.gh.pull_request.call_args_list), 3)
         self.assertEqual(self.gh.pending_deployments.call_count, 1)  # unchanged notification, no journaled gate
         self.assertEqual(self.gh.writes[0][2], 8)
 
@@ -656,7 +659,10 @@ class PullRequestLifecycle(LifecycleBase):
         flaky.pr_snapshots[("org/private", 2)] = [make_pr(repo="org/private", number=2)]
         r = Runner(make_settings(), flaky, Journal(Path(self.dir.name) / "j2.jsonl"), FakeReviewer([APPROVE]),
                    clock=lambda: self.now, live_lock_held=True)
-        self.assertEqual(r.tick(), {"error": 1, "applied": 1, "quarantined": 1})
+        self.assertEqual(r.tick(), {"error": 2, "applied": 1})
+        self.assertNotIn(("pr", "org/private", 2), r.quarantined)
+        r.tick()
+        self.assertEqual(r.tick(), {"error": 1, "quarantined": 1, "final": 1})
         self.assertIn(("pr", "org/private", 2), r.quarantined)
 
     def test_approve_floor_overrides_a_talked_into_model(self):
@@ -668,19 +674,12 @@ class PullRequestLifecycle(LifecycleBase):
         self.assertEqual(self.notified, ["org/repo#7: the model wanted to approve despite failed check: sast; open it and decide"])
         self.assertEqual(r.process_pr("org/repo", 7), "final")
 
-    def test_missing_patch_floor_names_file_and_owner_action_once(self):
+    def test_file_without_patch_does_not_refuse_the_approval(self):
         self.gh.pr_snapshots[("org/repo", 7)] = [make_pr(files=(make_file('report.pdf', patch=None, sha="b" * 40),))]
         r = self.runner(reviewer=FakeReviewer([APPROVE]))
-        self.assertEqual(r.process_pr("org/repo", 7), "nothing")
-        self.assertEqual(self.gh.writes, [])
-        expected = ("org/repo#7: the model wanted to approve but report.pdf has no patch to read; "
-                    "open it, and press A in its detail to approve as owner if it is fine")
-        self.assertEqual(self.notified, [expected])
-        records = [json.loads(line) for line in self.journal.path.read_text().splitlines()]
-        self.assertEqual(next(rec['text'] for rec in records if rec['event'] == 'notify'), expected)
-        self.assertIn(('nothing', 'approve refused by the floor: patch not visible: report.pdf'), self.events())
-        self.assertEqual(r.process_pr("org/repo", 7), "final")
-        self.assertEqual(self.notified, [expected])
+        self.assertEqual(r.process_pr("org/repo", 7), "applied")
+        self.assertEqual(len(self.gh.writes), 1)
+        self.assertEqual(self.notified, [])
 
     def test_already_posted_review_is_not_posted_again(self):
         # the tool posted a comment, then died before journaling it

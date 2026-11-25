@@ -156,9 +156,8 @@ It also sees file changes since the newest earlier successful run of the same wo
 GitHub limits comparisons to 300 files; the overview marks that limitation. Every deployment uses the
 same workspace flow, with the workflow, complete job logs and comparison patches available to read.
 
-A binary file without a readable patch always needs a human: the screen raises a needs-you alert,
-highlights its header badge and turns the lighthouse beam amber until you decide.
-An empty file counts as visible: its empty Git blob has nothing to read, even without a patch.
+A file GitHub lists without a patch (generated, binary or too large) does not hold an approval back:
+the model sees it marked in the file list and judges the change from the rest.
 
 ## What the code guarantees, whatever the rules say
 

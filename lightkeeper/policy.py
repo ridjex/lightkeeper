@@ -132,7 +132,6 @@ def approve_floor(pr: PullRequest) -> str | None:
     failed = [c.name for c in pr.checks if c.failed and c.required]
     if failed:
         return f"failed check: {failed[0]}"
-    missing = [f.path for f in pr.files if not f.is_complete]
-    if missing:
-        return f"patch not visible: {missing[0]}"
+    # A file GitHub lists without a patch (generated, binary or too large) does not refuse an approval: the
+    # owner's choice, as such files are almost always generated. The model sees it marked and judges the rest.
     return None

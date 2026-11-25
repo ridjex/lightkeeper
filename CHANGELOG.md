@@ -4,6 +4,18 @@ All notable changes to lightkeeper. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-11-25
+
+### Changed
+
+- A file GitHub lists without a patch (generated, binary or too large) no longer refuses an approval in code;
+  the model judges the change from the rest. The rules template says the same.
+
+### Fixed
+
+- A repository that answers "not found" once is retried on the next check instead of being quarantined until
+  restart; quarantine follows only three such answers in a row.
+
 ## [0.2.4] — 2026-11-19
 
 ### Fixed

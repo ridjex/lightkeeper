@@ -76,12 +76,12 @@ Code, before the model sees anything (`policy.evaluate_pr`):
   A turn/budget limit, or a timeout after any tool call, is `unclear` too: settled for that input, journaled,
   alerted and notified for PRs and deployments, with the bound and opened/offered file counts. A timeout
   before any tool call remains a transport failure and retries under the normal model pause policy.
-- PR `approve` floors: bot author, failed required check, patch omitted by GitHub (except for a removed file), incomplete file list →
+- PR `approve` floors: bot author, failed required check, incomplete file list →
   `nothing` + notification. A denied tool call refuses approval for both PRs and deployments, with the
   first denial in the private reason, journal and notification. Unopened patches are the model's judgement.
   Fresh PR floors are checked again before posting; other verdicts are unaffected by denied calls.
-  An empty Git blob counts as visible without a patch, including a removed empty file; binary and
-  oversized files without patches remain incomplete. Blob SHAs do not enter the context fingerprint.
+  A file GitHub lists without a patch (generated, binary or too large) is marked for the model and does not
+  refuse an approval. Blob SHAs do not enter the context fingerprint.
 - Removed as reviewer before the tool ever reviewed → wait (the author handed it to someone else; a
   re-request resumes). Removed after the tool reviewed (GitHub does that on every submitted review) → still
   watched. Any manual review by the owner, a comment included, ends the tool's involvement with that PR.

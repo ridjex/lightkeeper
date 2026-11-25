@@ -8,7 +8,7 @@ These are the rules that are easy to break without noticing.
 
 - **The model proposes, the code posts.** The model has Read, Grep and Glob confined to a workspace the
   script wrote; no shell, network or GitHub token. It has no say over the approval floors (bot author,
-  failed required check, missing patch, incomplete file list, denied file-tool call). Never route a write through model output.
+  failed required check, incomplete file list, denied file-tool call). Never route a write through model output.
 - **One review per head and action.** Posting re-fetches the pull request and compares head, description,
   checks, files and reviews before writing; approvals carry `commit_id`. Keep that check in front of every write.
 - **Frozen text is hashed.** The prompt frame in `lightkeeper/reviewer.py` and the rules, repository notes,

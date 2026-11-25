@@ -3,6 +3,8 @@
 Why things are the way they are. Newest first. Entries are short on purpose; the reasoning behind a change
 belongs in its commit and pull request.
 
+- 2026-11-25 · **A file without a patch no longer refuses an approval:** in practice such files were generated text, vendored wheels and fixtures; the owner chose speed over a human look at each one. The model still sees them marked.
+- 2026-11-25 · **Quarantine needs three "no access" answers in a row:** GitHub once answered 404 for seconds on two repositories at once, and a single answer quarantined both until restart.
 - 2026-11-11 · **Built-in Read, Grep and Glob use the CLI's dontAsk workspace confinement:** verified CLI refusals cover traversal and external symlinks; no broker or kernel sandbox is added, and denied calls refuse approval.
 - 2026-11-11 · **Only generated names reach the filesystem:** GitHub paths stay escaped inside indexes and patches, so request material cannot become CLI configuration.
 - 2026-11-11 · **One whole-section inline rule for every size:** reserve pointers, then inline sections in order under 200,000 bytes; the model chooses what matters from complete files.

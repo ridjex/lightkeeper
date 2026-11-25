@@ -20,8 +20,9 @@ One action:
   can see. Say what in `why`. No approval.
 - `request_changes` — red with a concrete defect in the diff: a secret, a migration that drops or rewrites
   data, a test deleted to make CI pass, security loosened. Say what in `why`. No approval.
-- `nothing` — only when you cannot see the change at all (patch omitted, context cut) or the author is a
-  bot. Then `notify` the owner.
+- `nothing` — only when you cannot see the change at all (context cut) or the author is a bot. Then
+  `notify` the owner. A file GitHub shows without a patch (generated, binary or too large) is not a reason
+  to withhold the approval: judge the change from the rest.
 
 What is posted publicly, in the owner's name, is `why` (one sentence: the verdict and its essential reason)
 and `watch` (the single most important remaining concern, or empty). Write them as pointers, not verdicts

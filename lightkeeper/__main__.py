@@ -44,6 +44,7 @@ FAST_POLL_S = 15
 REVIEWER_PAUSE_S = 900
 UNKNOWN_WRITE_GRACE_S = 600  # a review can appear seconds after a 502; after ten minutes it never will
 NOTIFICATION_WINDOW_S = 3 * 24 * 3600
+QUARANTINE_AFTER = 3  # GitHub sometimes answers 404 for seconds; three ticks in a row is a real loss of access
 CI_WAIT_MAX_S = 3 * 3600          # checks still running after this long: tell the owner once, keep waiting
 _REVIEW_STATES = {"approve": "APPROVED", "request_changes": "CHANGES_REQUESTED", "comment": "COMMENTED"}
 
@@ -233,6 +234,7 @@ class Runner:
         self._probe_warning = None
         self._engine_probed = False
         self.quarantined: set[tuple[str, str, int]] = set()  # (kind, repo, PR number or run id)
+        self._no_access: dict[tuple[str, str, int], int] = {}  # item -> consecutive "no access" answers
         self.seen_runs: dict[tuple[str, int], str] = {}       # (repo, run_id) -> notification updated_at, once settled
         self.seen_requests: dict[str, str] = {}  # repository -> successfully discovered notification time
         self._default_branch: dict[str, str] = {}
@@ -743,10 +745,7 @@ class Runner:
         if blocked:                                           # the floor the model cannot be talked out of
             self._journal("pr", key, "nothing", reason=f"approve refused by the floor: {blocked}", source="eligibility",
                           fingerprint=pr.fingerprint, **decision.data)
-            message = (f"the model wanted to approve but {blocked.removeprefix('patch not visible: ')} has no patch to read; "
-                       "open it, and press A in its detail to approve as owner if it is fine"
-                       if blocked.startswith("patch not visible: ") else
-                       f"the model wanted to approve despite {blocked}; open it and decide")
+            message = f"the model wanted to approve despite {blocked}; open it and decide"
             notify("nothing", f"{pr.repo}#{pr.number}: {message}")
             return "nothing"
         if boundary := self._boundary(pr.repo, action):
@@ -1181,6 +1180,12 @@ class Runner:
             outcome = fn()
         except GhError as exc:
             if exc.no_access:
+                strikes = self._no_access[item] = self._no_access.get(item, 0) + 1
+                if strikes < QUARANTINE_AFTER:
+                    log(f"{label}: no access ({exc}); will retry next tick ({strikes} of {QUARANTINE_AFTER})")
+                    count("error")
+                    return "error"
+                self._no_access.pop(item, None)
                 self.quarantined.add(item)
                 log(f"{label}: no access ({exc}); quarantined for this session")
                 self._quarantine_conditions()
@@ -1198,6 +1203,7 @@ class Runner:
             log(f"{label}: unexpected {type(exc).__name__}, will retry next tick ({str(exc)[:200]})")
             count("error")
             return "error"
+        self._no_access.pop(item, None)
         if outcome != "skip":
             count(outcome)
         return outcome
